@@ -141,3 +141,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Local Firebase configuration
+Arasaki_Staff_Planner_v0_8_Deploy/assets/js/config.js

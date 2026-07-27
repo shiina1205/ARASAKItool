@@ -9,7 +9,7 @@
   <meta http-equiv="Expires" content="0" />
   <title>荒嵜造船所 Staff Planner v0.8</title>
   <link rel="stylesheet" href="./assets/css/app-v0.8.css" />
-  <script src="./assets/js/theme-init-v0.8.js"></script>
+  <script type="module" src="./assets/js/theme-init-v0.8.js"></script>
 </head>
 <body>
 
@@ -46,7 +46,7 @@
       </div>
       <div id="sidebarNavContainer"></div>
       <button class="nav-button menu-settings-shortcut" data-view="settings"><span class="nav-icon">⚙</span>メニュー・設定</button>
-      <div class="side-note">Googleアカウントでログインし、荒嵜造船所スタッフ間で同じデータを共有します。外観は各スタッフが個別に変更できます。<br><span class="version-badge" id="versionBadge">Staff v0.8（読込中）</span></div>
+      <div class="side-note">Googleアカウントでログインし、荒嵜造船所スタッフ間で同じデータを共有します。外観は各スタッフが個別に変更できます。<br><span id="reactBootstrap"><span class="version-badge">React + TypeScript（読込中）</span></span></div>
     </aside>
 
     <main class="main">
@@ -667,8 +667,7 @@
   </dialog>
 
   <div class="toast" id="toast"></div>
-  <script src="./assets/js/app-v0.8.js" defer></script>
-  <script type="module" src="./assets/js/firebase-v0.8.js"></script>
+  <script type="module" src="/src/main.tsx"></script>
 
 </body>
 </html>
