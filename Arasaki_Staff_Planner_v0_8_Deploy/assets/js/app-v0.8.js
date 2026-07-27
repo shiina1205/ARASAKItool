@@ -119,7 +119,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     let statusLabels = { inbox:'Inbox', todo:'未着手', doing:'進行中', waiting:'待機中', done:'完了' };
     let projectStatusLabels = { planning:'計画中', active:'進行中', waiting:'待機中', completed:'完了', archived:'保管' };
     const viewInfo = {
-      home:['Home','今日の運営を整える'], yearly:['Yearly Log','年間ログ'], calendar:['Schedule','カレンダー'], events:['Events','イベント・記念日'], future:['Future Log','未来の予定'],
+      home:['Home','今日'], yearly:['Yearly Log','年間ログ'], calendar:['Schedule','カレンダー'], events:['Events','イベント・記念日'], future:['Future Log','未来の予定'],
       weekly:['Weekly Log','週間ログ'], daily:['Daily Log','日別ログ'], triage:['Task Workflow','タスクの整理フロー'],
       tasksAll:['Task','全タスク一覧'], tasksOperations:['Task','運営のタスク一覧'], tasksStaff:['Task','スタッフ用タスク一覧'], tasksCast:['Task','キャスト用タスク一覧'],
       projects:['Project','プロジェクト'], meetings:['Meeting','ミーティング'],
@@ -235,6 +235,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     const LEGACY_ROLE_MAP = {admin:'operations',member:'staff',viewer:'cast'};
     function normalizeStaffRole(role='cast') { return LEGACY_ROLE_MAP[role] || (['owner','operations','staff','cast'].includes(role)?role:'cast'); }
     function currentStaffRole() { return normalizeStaffRole(window.currentStaffUser?.role||'cast'); }
+    function canManageTasks() { return ['owner','operations'].includes(currentStaffRole()); }
+    function canManageDropdowns() { return canManageTasks(); }
     function taskAudiencesForRole(role=currentStaffRole()) {
       const normalized=normalizeStaffRole(role);
       if(normalized==='owner'||normalized==='operations')return ['operations','staff','cast'];
@@ -268,6 +270,13 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       return 'cast';
     }
     function currentTaskViewAudience() { return TASK_VIEW_AUDIENCE[currentView] || 'all'; }
+    function updateRoleControls() {
+      const allowed=canManageTasks();
+      document.body.classList.toggle('task-create-disabled',!allowed);
+      const createIds=['newTaskBtn','newTaskBtn2','workflowOpenFullTaskBtn','triageNewTaskBtn','addTaskForDayBtn','dailyAddTaskBtn'];
+      createIds.forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=!allowed;});
+      const capture=document.getElementById('taskCaptureForm');if(capture)capture.hidden=!allowed;
+    }
     function taskAudienceOptions(selected='') {
       const allowed=taskAudiencesForRole();
       const chosen=allowed.includes(selected)?selected:(TASK_VIEW_AUDIENCE[currentView]&&TASK_VIEW_AUDIENCE[currentView]!=='all'&&allowed.includes(TASK_VIEW_AUDIENCE[currentView])?TASK_VIEW_AUDIENCE[currentView]:defaultTaskAudienceForRole());
@@ -293,17 +302,18 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const pair = values => values.map(value => ({ value, label:value }));
       const typed = (category, labels) => labels.map((label,index) => ({ value:`${category}__${index+1}`, label, category }));
       return {
-        categories: pair(['全体','企画・進行','ワールド制作','小物・制作','SNS・広報','品質確認','当日運営']),
+        categories: pair(['企画','人事','総務','情報システム','ワールド制作','小物制作','SNS・広報','品質確認']),
         taskTypes: [
-          ...typed('全体',['連絡・確認','決定事項','資料整理','スタッフ対応']),
-          ...typed('企画・進行',['企画','制作進行','MTG','スケジュール','募集・面談']),
+          ...typed('企画',['企画立案','タイムスケジュール作成','カンペ作成','MTG']),
+          ...typed('人事',['募集','面談','育成']),
+          ...typed('総務',['周知','出欠確認','リマインド','日程調整']),
+          ...typed('情報システム',['Discord管理','Notion管理','ツール管理']),
           ...typed('ワールド制作',['モデリング','ギミック','ライト・演出','動作確認','修正']),
-          ...typed('小物・制作',['小物制作','衣装・展示物','素材作成','Unity組み込み','修正']),
-          ...typed('SNS・広報',['告知文','画像制作','投稿','拡散・連携','結果発表']),
-          ...typed('品質確認',['品質チェック','動作確認','修正依頼','最終確認']),
-          ...typed('当日運営',['インスタンス運営','バーテンダー','釣り・調理','撮影・記録','キャスト・RP'])
+          ...typed('小物制作',['モデリング','ギミック','提出','実装']),
+          ...typed('SNS・広報',['告知文','ポスター作製','投稿','イベントカレンダー']),
+          ...typed('品質確認',['動作確認','修正依頼','最終確認'])
         ],
-        eventTypes: pair(['定期イベント','特別イベント','ミーティング','締切','公開日','募集','講習会','その他']),
+        eventTypes: pair(['定期イベント','特別イベント','MTG']),
         taskStatuses: [{value:'inbox',label:'Inbox'},{value:'todo',label:'未着手'},{value:'doing',label:'進行中'},{value:'review',label:'確認待ち'},{value:'waiting',label:'待機中'},{value:'hold',label:'保留'},{value:'done',label:'完了',protected:true}],
         priorities: [{value:'high',label:'高'},{value:'medium',label:'中'},{value:'low',label:'低'}],
         taskGroups: pair(['準備','制作','確認','当日','保留']),
@@ -314,7 +324,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       };
     }
     const settingNames = {
-      categories:'カテゴリ', taskTypes:'タスクの種類', eventTypes:'イベントの種類', taskStatuses:'タスクの状態', priorities:'優先度',
+      categories:'カテゴリ', taskTypes:'タスクの種類', eventTypes:'イベントの種類', taskStatuses:'タスクの状態',
       taskGroups:'タスクグループ', importanceLevels:'重要度（3段階・名称変更可）', urgencyLevels:'緊急度（3段階・名称変更可）', projectStatuses:'プロジェクト状態',
       noteTypes:'ノートの種類'
     };
@@ -609,6 +619,30 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       if (message) showToast(message);
     }
 
+    function restoreTaskSnapshot(taskId,snapshot,message='完了を元に戻しました') {
+      const index=state.tasks.findIndex(task=>task.id===taskId);if(index<0)return;
+      state.tasks[index]=JSON.parse(snapshot);saveState(message);
+    }
+
+    function setTaskCompletion(task,checked,occurrenceDate='') {
+      const snapshot=JSON.stringify(task);
+      let message='';
+      if(checked&&hasRepeat(task)){
+        const result=completeRecurringTask(task,occurrenceDate||task.due);
+        message=result.advanced?`完了を記録し、次回を ${dateLabel(result.next,false)} に移動しました`:'最後の繰り返しを完了しました';
+      }else if(!checked&&hasRepeat(task)){
+        const completedDate=occurrenceDate||(task.repeatHistory||[]).slice().sort().at(-1)||task.due;
+        task.repeatHistory=(task.repeatHistory||[]).filter(date=>date!==completedDate);
+        task.due=completedDate;task.status='todo';task.completed=false;
+        message='未完了に戻しました';
+      }else{
+        task.status=checked?'done':'todo';task.completed=checked;
+        message=checked?'完了にしました':'未完了に戻しました';
+      }
+      saveState(message);
+      if(checked)showToast(message,()=>restoreTaskSnapshot(task.id,snapshot));
+    }
+
     window.applyRemotePlannerState = function(remoteState) {
       if (!remoteState || typeof remoteState !== 'object') return;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteState));
@@ -858,7 +892,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const def=menuDefinition(config.view); if(!def)return '';
       const active=config.view===currentView?' active':'';
       const pinned=config.pinned?(mobile?' pinned-mobile':''):'';
-      return `<button class="nav-button${active}${pinned}${child?' nav-child':''}" data-view="${def.view}"><span class="nav-icon">${def.icon}</span><span>${escapeHtml(mobile?def.short:def.label)}</span>${!mobile&&config.pinned?'<span class="nav-pin-mark" title="ピン留め中">●</span>':''}</button>`;
+      const audience=TASK_VIEW_AUDIENCE[def.view];
+      return `<button class="nav-button${active}${pinned}${child?' nav-child':''}" data-view="${def.view}" ${audience&&audience!=='all'?`data-task-audience-drop="${audience}"`:''}><span class="nav-icon">${def.icon}</span><span>${escapeHtml(mobile?def.short:def.label)}</span>${!mobile&&config.pinned?'<span class="nav-pin-mark" title="ピン留め中">●</span>':''}</button>`;
     }
     function visibleMenuItems() {
       state.menuConfig=normalizeMenuConfig(state.menuConfig);
@@ -986,9 +1021,12 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       window.scrollTo({top:0,behavior:'smooth'});
     }
 
-    function showToast(message) {
+    function showToast(message, undoAction=null) {
       const toast = document.getElementById('toast');
-      toast.textContent = message;
+      toast.innerHTML = `<span>${escapeHtml(message)}</span>${undoAction?'<button class="toast-undo" type="button">元に戻す</button>':''}`;
+      if(undoAction) toast.querySelector('.toast-undo')?.addEventListener('click',()=>{
+        clearTimeout(showToast.timer);undoAction();toast.classList.remove('show');
+      },{once:true});
       toast.classList.add('show');
       clearTimeout(showToast.timer);
       showToast.timer = setTimeout(() => toast.classList.remove('show'), 2200);
@@ -1009,7 +1047,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     function taskCardHtml(task, compact=false) {
       const overdue = isOverdue(task);
       const pName = projectName(task.projectId);
-      return `<article class="task-card ${isDone(task)?'completed':''} ${overdue?'overdue':''}" data-kind="task" data-id="${task.id}" data-occurrence-date="${task._occurrenceDate||task.due||''}">
+      const movable=currentView==='tasksAll'&&canManageTasks()&&!task._virtualOccurrence;
+      return `<article class="task-card ${isDone(task)?'completed':''} ${overdue?'overdue':''} ${movable?'task-audience-draggable':''}" ${movable?'draggable="true" title="運営・スタッフ・キャストの一覧へドラッグして移動"':''} data-kind="task" data-id="${task.id}" data-occurrence-date="${task._occurrenceDate||task.due||''}">
         <input class="check task-toggle" type="checkbox" ${isDone(task)?'checked':''} ${task._virtualOccurrence?'disabled title="先の繰り返し予定です。完了は直近の回から記録してください"':''} aria-label="完了切替" />
         <div>
           <div class="task-title">${escapeHtml(task.title)}</div>
@@ -1031,7 +1070,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
           ${task._virtualOccurrence?`<div class="occurrence-note">この日は繰り返し予定です。完了チェックは直近の実行日から進めます。</div>`:''}
           ${!compact && task.note?`<div class="task-note">${nl2br(task.note)}</div>`:''}
         </div>
-        <div class="card-actions"><button class="icon-btn task-edit" title="編集">✎</button><button class="icon-btn task-delete" title="削除">⌫</button></div>
+        <div class="card-actions">${isDone(task)?'<button class="btn small task-undo-complete" type="button">元に戻す</button>':''}<button class="icon-btn task-edit" title="編集">✎</button><button class="icon-btn task-delete" title="削除">⌫</button></div>
       </article>`;
     }
 
@@ -1181,6 +1220,10 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         if (sort==='importance') return (importanceRank[a.importance]??9)-(importanceRank[b.importance]??9) || (urgencyRank[a.urgency]??9)-(urgencyRank[b.urgency]??9);
         if (sort==='urgency') return (urgencyRank[a.urgency]??9)-(urgencyRank[b.urgency]??9) || (importanceRank[a.importance]??9)-(importanceRank[b.importance]??9);
         if (sort==='created') return (b.createdAt||'').localeCompare(a.createdAt||'');
+        if (sort==='group') {
+          const order=new Map(settingItems('taskGroups').map((item,index)=>[item.value,index]));
+          return (order.get(a.group)??999)-(order.get(b.group)??999) || (a.due||'9999-12-31').localeCompare(b.due||'9999-12-31');
+        }
         if (sort==='priority') return (priorityOrder[a.priority]??999)-(priorityOrder[b.priority]??999) || (a.due||'9999-12-31').localeCompare(b.due||'9999-12-31');
         if (sort==='category') return categories.indexOf(a.category)-categories.indexOf(b.category) || (a.due||'9999-12-31').localeCompare(b.due||'9999-12-31');
         return Number(isDone(a))-Number(isDone(b)) || (a.due||'9999-12-31').localeCompare(b.due||'9999-12-31');
@@ -1266,7 +1309,9 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const accessible=visibleTasks().filter(task=>board==='all'||taskAudienceOf(task)===board);
       const items = getFilteredTasks();
       const heading=document.getElementById('taskListHeading');if(heading)heading.textContent=title;
-      const note=document.getElementById('taskListAccessNote');if(note)note.textContent=board==='all'?'オーナーだけが、運営・スタッフ・キャストの全タスクをまとめて確認できます。':`${TASK_AUDIENCE_LABELS[board]}用として登録されたタスクだけを表示しています。`;
+      const note=document.getElementById('taskListAccessNote');if(note)note.textContent=canManageTasks()
+        ? (board==='all'?'カードを運営・スタッフ・キャストの一覧へドラッグして表示先を変更できます。':`${TASK_AUDIENCE_LABELS[board]}用として登録されたタスクだけを表示しています。`)
+        : 'タスクの追加はオーナー・運営のみ可能です。意見やアイデアは「アイデア・ノート」へ記載してください。';
       document.getElementById('taskCountText').textContent = `${items.length}件表示中 / この一覧 全${accessible.length}件`;
       document.getElementById('taskList').innerHTML = items.length ? items.map(t => taskCardHtml(t)).join('') : '<div class="empty">条件に合うタスクはありません。</div>';
       refreshTaskAudienceSelect(board==='all'?'':board);
@@ -1724,6 +1769,9 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       document.getElementById('weekStartSetting').value=state.preferences.weekStartsOn;
       document.getElementById('showJapaneseHolidaysSetting').checked=state.preferences.showJapaneseHolidays!==false;
       const categoryOptionsForSetting=(selected='')=>`<option value="">共通</option>${settingOptions('categories',selected)}`;
+      const dropdownPanel=document.getElementById('dropdownSettingsPanel');
+      if(dropdownPanel)dropdownPanel.hidden=!canManageDropdowns();
+      if(!canManageDropdowns()){document.getElementById('settingsGrid').innerHTML='';return;}
       document.getElementById('settingsGrid').innerHTML=Object.entries(settingNames).map(([key,name])=>{
         const fixedMatrixLevels=key==='importanceLevels'||key==='urgencyLevels';
         const rows=settingItems(key).map((item,index)=>`<div class="setting-row ${key==='taskTypes'?'task-type-setting-row':''}" data-setting-key="${key}" data-setting-index="${index}">
@@ -1741,16 +1789,19 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       }).join('');
     }
     function applySettingRename(key,index,newLabel) {
+      if(!canManageDropdowns()){showToast('プルダウン設定はオーナー・運営のみ変更できます');return;}
       const item=settingItems(key)[index];
       if(!item||!newLabel.trim())return;
       item.label=newLabel.trim();
       syncRuntimeSettings(); populateAllDropdowns(); saveState('候補名を変更しました');
     }
     function applyTaskTypeCategory(index,category) {
+      if(!canManageDropdowns()){showToast('プルダウン設定はオーナー・運営のみ変更できます');return;}
       const item=settingItems('taskTypes')[index];if(!item)return;
       item.category=category||'';populateAllDropdowns();saveState('タスク種類のカテゴリを変更しました');
     }
     function addSettingItem(key,label,category='') {
+      if(!canManageDropdowns()){showToast('プルダウン設定はオーナー・運営のみ変更できます');return;}
       const clean=label.trim(); if(!clean)return;
       const duplicate=settingItems(key).some(item=>item.label===clean && (key!=='taskTypes'||(item.category||'')===(category||'')));
       if(duplicate){showToast('同じ名前の候補があります');return;}
@@ -1759,6 +1810,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       syncRuntimeSettings(); populateAllDropdowns(); saveState('候補を追加しました');
     }
     function deleteSettingItem(key,index) {
+      if(!canManageDropdowns()){showToast('プルダウン設定はオーナー・運営のみ変更できます');return;}
       const item=settingItems(key)[index]; if(!item)return;
       if(item.protected){showToast('この候補は削除できません');return;}
       if(settingUsed(key,item.value)){showToast('使用中の候補は削除できません');return;}
@@ -1766,6 +1818,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       syncRuntimeSettings(); populateAllDropdowns(); saveState('候補を削除しました');
     }
     function moveSettingItem(key,fromIndex,toIndex) {
+      if(!canManageDropdowns()){showToast('プルダウン設定はオーナー・運営のみ変更できます');return;}
       const items=settingItems(key);if(fromIndex<0||fromIndex>=items.length)return;
       const [item]=items.splice(fromIndex,1);
       const safe=Math.max(0,Math.min(toIndex,items.length));items.splice(safe,0,item);
@@ -1776,6 +1829,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       // v0.7: 変更のたびに全ページを再描画せず、現在表示中のページだけを更新します。
       syncRuntimeSettings();
       populateAllDropdowns();
+      updateRoleControls();
       renderNavigation();
       if (currentView==='home') renderHome();
       else if (['tasksAll','tasksOperations','tasksStaff','tasksCast'].includes(currentView)) renderTasks();
@@ -1877,6 +1931,10 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     }
 
     function openTaskDialog(task=null, preset={}) {
+      if(!task&&!canManageTasks()){
+        showToast('タスクの追加はオーナー・運営のみ可能です。アイデア・ノートをご利用ください。');
+        setView('notes');return;
+      }
       refreshProjectSelects();
       clearTaskFormError();
       document.getElementById('taskModalTitle').textContent = task?'タスクを編集':'タスクを追加';
@@ -2009,6 +2067,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       e.preventDefault();
       clearTaskFormError();
       const id=document.getElementById('taskId').value; const existing=state.tasks.find(t=>t.id===id);
+      if(!existing&&!canManageTasks()){showToast('タスクの追加はオーナー・運営のみ可能です');document.getElementById('taskDialog').close();setView('notes');return;}
       const status=document.getElementById('taskStatus').value;
       let rawDue=document.getElementById('taskDue').value;
       const repeatType=document.getElementById('taskRepeatType').value;
@@ -2262,6 +2321,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       }
       if(kind==='task'){
         const item=state.tasks.find(t=>t.id===id);
+        if(e.target.closest('.task-undo-complete')){setTaskCompletion(item,false,card.dataset.occurrenceDate||item.due);return;}
         if(e.target.closest('.task-edit'))openTaskDialog(item);
         if(e.target.closest('.matrix-unassign')){assignTaskTriage(id,'','');return;}
         if(e.target.closest('.task-delete')&&confirm(hasRepeat(item)?'この繰り返しタスク全体を削除しますか？':'このタスクを削除しますか？')){state.tasks=state.tasks.filter(t=>t.id!==id);saveState('タスクを削除しました');}
@@ -2310,22 +2370,20 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       if(e.target.classList.contains('task-toggle')){
         const card=e.target.closest('[data-kind="task"]'); const task=state.tasks.find(t=>t.id===card.dataset.id);
         if(task){
-          if (e.target.checked && hasRepeat(task)) {
-            const result=completeRecurringTask(task,card.dataset.occurrenceDate||task.due);
-            saveState(result.advanced?`完了を記録し、次回を ${dateLabel(result.next,false)} に移動しました`:'最後の繰り返しを完了しました');
-          } else {
-            task.status=e.target.checked?'done':'todo';task.completed=e.target.checked;saveState(e.target.checked?'完了にしました':'未完了に戻しました');
-          }
+          setTaskCompletion(task,e.target.checked,card.dataset.occurrenceDate||task.due);
         }
       }
     });
 
     let draggedMenuKey='';
     let draggedTriageTaskId='';
+    let draggedAudienceTaskId='';
     let draggedSettingKey='';
     let draggedSettingIndex=-1;
     let settingDropAfter=false;
     document.addEventListener('dragstart',e=>{
+      const audienceCard=e.target.closest('.task-audience-draggable');
+      if(audienceCard){draggedAudienceTaskId=audienceCard.dataset.id||'';audienceCard.classList.add('dragging');if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/task-audience-id',draggedAudienceTaskId);e.dataTransfer.setData('text/plain',draggedAudienceTaskId);}return;}
       const settingHandle=e.target.closest('.setting-drag-handle');
       if(settingHandle){const row=settingHandle.closest('.setting-row');draggedSettingKey=row.dataset.settingKey;draggedSettingIndex=Number(row.dataset.settingIndex);row.classList.add('setting-dragging');if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/setting-key',draggedSettingKey);e.dataTransfer.setData('text/plain',`${draggedSettingKey}:${draggedSettingIndex}`);}return;}
       const taskCard=e.target.closest('.matrix-task-card');
@@ -2335,6 +2393,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       if(e.dataTransfer){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/menu-key',draggedMenuKey);e.dataTransfer.setData('text/plain',draggedMenuKey);}
     });
     document.addEventListener('dragover',e=>{
+      const audienceTarget=e.target.closest('[data-task-audience-drop]');
+      if(audienceTarget&&draggedAudienceTaskId){e.preventDefault();audienceTarget.classList.add('task-audience-drop-over');if(e.dataTransfer)e.dataTransfer.dropEffect='move';return;}
       if(draggedSettingKey){
         const row=e.target.closest('.setting-row');const list=e.target.closest('.setting-list');
         if(row&&row.dataset.settingKey===draggedSettingKey){e.preventDefault();const rect=row.getBoundingClientRect();settingDropAfter=e.clientY>rect.top+rect.height/2;document.querySelectorAll('.setting-row.setting-drop-before,.setting-row.setting-drop-after').forEach(el=>el.classList.remove('setting-drop-before','setting-drop-after'));row.classList.add(settingDropAfter?'setting-drop-after':'setting-drop-before');return;}
@@ -2346,6 +2406,12 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       e.preventDefault();document.querySelectorAll('.menu-customize-row.drag-over').forEach(el=>el.classList.remove('drag-over'));row.classList.add('drag-over');
     });
     document.addEventListener('drop',e=>{
+      const audienceTarget=e.target.closest('[data-task-audience-drop]');
+      if(audienceTarget&&draggedAudienceTaskId){
+        e.preventDefault();const task=state.tasks.find(item=>item.id===draggedAudienceTaskId);
+        if(task&&canManageTasks()){task.audience=normalizeTaskAudience(audienceTarget.dataset.taskAudienceDrop);saveState(`${TASK_AUDIENCE_LABELS[task.audience]}用タスク一覧へ移動しました`);}
+        draggedAudienceTaskId='';return;
+      }
       if(draggedSettingKey){
         const row=e.target.closest('.setting-row');const list=e.target.closest('.setting-list');
         if(row&&row.dataset.settingKey===draggedSettingKey){e.preventDefault();let target=Number(row.dataset.settingIndex)+(settingDropAfter?1:0);if(draggedSettingIndex<target)target--;moveSettingItem(draggedSettingKey,draggedSettingIndex,target);draggedSettingKey='';draggedSettingIndex=-1;return;}
@@ -2357,7 +2423,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       e.preventDefault();moveMenuEntry(draggedMenuKey,row.dataset.menuKey,false);draggedMenuKey='';
     });
     document.addEventListener('dragend',()=>{
-      draggedMenuKey='';draggedTriageTaskId='';draggedSettingKey='';draggedSettingIndex=-1;document.querySelectorAll('.menu-customize-row.dragging,.menu-customize-row.drag-over,.matrix-task-card.dragging,.triage-cell.drag-over,.triage-unassigned-drop.drag-over').forEach(el=>el.classList.remove('dragging','drag-over'));
+      draggedMenuKey='';draggedTriageTaskId='';draggedAudienceTaskId='';draggedSettingKey='';draggedSettingIndex=-1;document.querySelectorAll('.menu-customize-row.dragging,.menu-customize-row.drag-over,.matrix-task-card.dragging,.task-audience-draggable.dragging,.triage-cell.drag-over,.triage-unassigned-drop.drag-over').forEach(el=>el.classList.remove('dragging','drag-over'));
+      document.querySelectorAll('.task-audience-drop-over').forEach(el=>el.classList.remove('task-audience-drop-over'));
       document.querySelectorAll('.setting-row.setting-dragging,.setting-row.setting-drop-before,.setting-row.setting-drop-after').forEach(el=>el.classList.remove('setting-dragging','setting-drop-before','setting-drop-after'));document.querySelectorAll('.setting-list.setting-drop-end').forEach(el=>el.classList.remove('setting-drop-end'));
     });
 
