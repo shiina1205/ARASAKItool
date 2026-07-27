@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>荒嵜造船所 Staff Planner v0.8</title>
+  <link rel="stylesheet" href="./assets/css/app-v0.8.css" />
+  <script src="./assets/js/theme-init-v0.8.js"></script>
+</head>
+<body>
+
+  <section class="auth-gate" id="authGate" aria-label="スタッフログイン">
+    <div class="auth-card">
+      <div class="auth-logo">⚓</div>
+      <div class="eyebrow">ARASAKI SHIPYARD</div>
+      <h1>Staff Planner</h1>
+      <p>荒嵜造船所の企画・制作・イベント運営を、スタッフ全員で共有するための専用プランナーです。</p>
+      <div class="auth-actions">
+        <button class="btn primary google-login-btn" id="googleLoginBtn" type="button"><span class="google-g">G</span>Googleアカウントでログイン</button>
+              </div>
+      <div class="auth-status" id="authStatus">Firebase設定を確認しています…</div>
+      <div class="auth-uid" id="authUid" hidden></div>
+      <div class="join-request-panel" id="joinRequestPanel" hidden>
+        <h2 id="joinRequestTitle">スタッフ参加申請</h2>
+        <p id="joinRequestDescription">表示名を確認し、オーナー／運営へ参加申請を送信してください。</p>
+        <div class="join-request-account" id="joinRequestAccount"></div>
+        <div class="field" id="joinRequestNameField"><label>Staff Plannerでの表示名</label><input id="joinRequestName" maxlength="60" placeholder="例：椎那" /></div>
+        <div class="join-request-actions">
+          <button class="btn primary" id="submitJoinRequestBtn" type="button">参加申請を送信</button>
+          <button class="btn" id="refreshJoinRequestBtn" type="button">登録状況を確認</button>
+        </div>
+        <div class="auth-status" id="joinRequestStatus" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+  <!-- 荒嵜造船所 Staff Planner v0.8 / modular + incremental sync + role UI verified -->
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">✦</div>
+        <div><h1>荒嵜造船所 Staff Planner</h1><p>企画・制作・運営をスタッフで共有</p></div>
+      </div>
+      <div id="sidebarNavContainer"></div>
+      <button class="nav-button menu-settings-shortcut" data-view="settings"><span class="nav-icon">⚙</span>メニュー・設定</button>
+      <div class="side-note">Googleアカウントでログインし、荒嵜造船所スタッフ間で同じデータを共有します。外観は各スタッフが個別に変更できます。<br><span class="version-badge" id="versionBadge">Staff v0.8（読込中）</span></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow" id="pageEyebrow">Home</div>
+          <h2 id="pageTitle">今日を整える</h2>
+          <p id="todayText"></p>
+        </div>
+        <div class="top-actions">
+          <div class="staff-user-chip" id="staffUserChip" hidden><span class="staff-user-avatar" id="staffUserAvatar">⚓</span><span><strong id="staffUserName">未ログイン</strong><small id="staffUserRole">Googleログイン</small></span><button class="icon-btn" id="staffSignOutBtn" type="button" title="ログアウト">↪</button></div>
+          <button class="btn" id="newEventBtn">＋ イベント追加</button>
+          <button class="btn primary" id="newTaskBtn">＋ タスク追加</button>
+        </div>
+      </header>
+
+      <section class="view active" id="homeView">
+        <div class="today-hero">
+          <article class="panel goal-panel">
+            <div class="panel-title-row">
+              <div><div class="eyebrow">Today's Goal</div><h3>今日のゴール</h3><div class="panel-sub">今日いちばん大切にしたいこと</div></div>
+              <button class="btn small" id="saveDailyEntryBtn">保存</button>
+            </div>
+            <div class="field"><input id="todayGoal" placeholder="例：急がず、イベント準備をひとつ進める" /></div>
+            <div class="today-note-grid">
+              <div class="field"><label>Good Things｜よかったこと</label><textarea id="goodThings" placeholder="小さなことでもOK"></textarea></div>
+            </div>
+          </article>
+          <article class="panel cloud-status-card">
+            <div class="panel-title-row"><div><div class="eyebrow">Shared Workspace</div><h3>共有ステータス</h3><div class="panel-sub">スタッフ全員の変更をクラウド同期</div></div></div>
+            <div class="cloud-status-line"><span class="cloud-status-dot" id="cloudStatusDot"></span><strong id="cloudStatusText">ログイン待ち</strong></div>
+            <div class="muted" id="cloudStatusDetail" style="font-size:10px;line-height:1.65">Googleログイン後、荒嵜造船所の共有データを読み込みます。</div>
+            
+          </article>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card"><div class="stat-label">未完了タスク</div><div class="stat-value" id="openTaskStat">0</div><div class="stat-caption">いま抱えているタスク</div></article>
+          <article class="stat-card"><div class="stat-label">今日が期限</div><div class="stat-value" id="todayTaskStat">0</div><div class="stat-caption">今日中に確認したいもの</div></article>
+          <article class="stat-card"><div class="stat-label">期限切れ</div><div class="stat-value" id="overdueTaskStat">0</div><div class="stat-caption">無理せず組み直そう</div></article>
+          <article class="stat-card"><div class="stat-label">進行中プロジェクト</div><div class="stat-value" id="activeProjectStat">0</div><div class="stat-caption">現在動いているもの</div></article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-title-row"><div><h3>今日・近日のタスク</h3><div class="panel-sub">期限と優先度が近い順</div></div><button class="btn ghost small" data-open-view="tasks">すべて見る</button></div>
+            <div class="task-list" id="upcomingTasks"></div>
+          </article>
+          <div class="stack">
+            <article class="panel">
+              <div class="panel-title-row"><div><h3>担当領域ごとの進み具合</h3><div class="panel-sub">企画・制作・広報・品質確認・当日運営</div></div></div>
+              <div class="category-cards" id="categorySummary"></div>
+            </article>
+            <article class="panel event-list-panel">
+              <div class="panel-title-row"><div><h3>近日のイベント</h3><div class="panel-sub">誕生日・記念日・行事など</div></div><button class="btn ghost small" data-open-view="events">一覧</button></div>
+              <div class="event-list" id="upcomingEvents"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-title-row"><div><h3>次のミーティング</h3><div class="panel-sub">近い予定を表示</div></div><button class="btn ghost small" data-open-view="meetings">一覧</button></div>
+              <div class="meeting-list" id="nextMeetings"></div>
+            </article>
+          </div>
+          <article class="panel wide">
+            <div class="panel-title-row"><div><h3>優先度バランス</h3><div class="panel-sub">未完了タスクのみ</div></div></div>
+            <div class="bar-chart" id="priorityChart"></div>
+          </article>
+        </div>
+      </section>
+
+
+      <section class="view" id="yearlyView">
+        <article class="panel">
+          <div class="yearly-toolbar">
+            <div><div class="eyebrow">Yearly Log</div><h3 id="yearlyTitle" style="margin:4px 0 0">年間ログ</h3><div class="panel-sub">一年のテーマ・目標と、カテゴリ別のイベント・予定を12か月で確認</div></div>
+            <div class="yearly-controls">
+              <button class="btn icon" id="prevYearBtn" aria-label="前年">‹</button>
+              <div class="field"><label>表示する年</label><input type="number" id="yearlyYear" min="2020" max="2100" style="width:125px" /></div>
+              <div class="field"><label>表示カテゴリ</label><select id="yearlyCategoryFilter" style="min-width:150px"><option value="all">すべて</option></select></div>
+              <button class="btn small" id="thisYearBtn">今年</button>
+              <button class="btn icon" id="nextYearBtn" aria-label="翌年">›</button>
+              <button class="btn primary" id="saveYearlyBtn">年間ログを保存</button>
+            </div>
+          </div>
+          <div class="yearly-summary-grid">
+            <div class="field"><label>Year Theme｜今年のテーマ</label><textarea id="yearlyTheme" placeholder="今年を表す言葉・大切にしたい姿勢"></textarea></div>
+            <div class="field"><label>Year Goals｜今年の目標</label><textarea id="yearlyGoals" placeholder="年間目標を改行で記入"></textarea></div>
+            <div class="field"><label>Year Memo｜年間メモ</label><textarea id="yearlyMemo" placeholder="一年を通して覚えておきたいこと"></textarea></div>
+          </div>
+          <div class="panel-title-row"><div><h3>Events & Plans by Category</h3><div class="panel-sub">全イベント、Future Logの予定、日本の祝日をカテゴリ別に表示。月名を押すとカレンダーへ移動します</div></div><button class="btn small" id="yearlyAddEventBtn">＋ イベント・予定</button></div>
+          <div class="yearly-month-grid" id="yearlyMonths"></div>
+        </article>
+      </section>
+
+      <section class="view" id="calendarView">
+        <div class="calendar-layout">
+          <article class="panel">
+            <div class="calendar-head">
+              <div class="calendar-title" id="calendarTitle"></div>
+              <div class="calendar-controls">
+                <button class="btn icon" id="prevMonthBtn" aria-label="前月">‹</button>
+                <button class="btn small" id="todayMonthBtn">今月</button>
+                <button class="btn icon" id="nextMonthBtn" aria-label="翌月">›</button>
+              </div>
+            </div>
+            <div id="calendarFuturePanel"></div>
+            <div class="calendar-weekdays" id="calendarWeekdays"></div>
+            <div class="calendar-grid" id="calendarGrid"></div>
+          </article>
+          <article class="panel selected-day-box">
+            <div class="eyebrow">Day</div>
+            <div class="selected-date" id="selectedDateTitle"></div>
+            <div class="panel-sub" id="selectedDateSubtitle"></div>
+            <div class="modal-actions day-actions" style="justify-content:flex-start">
+              <button class="btn small primary" id="addTaskForDayBtn">＋タスク</button>
+              <button class="btn small" id="addEventForDayBtn">＋イベント</button>
+              <button class="btn small" id="addMeetingForDayBtn">＋会議</button>
+              <button class="btn small" id="openDailyForDayBtn">Daily Log</button>
+            </div>
+            <div class="day-section"><h4>Events</h4><div class="event-list" id="selectedDayEvents"></div></div>
+            <div class="day-section"><h4>Future Log</h4><div id="selectedDayFuture"></div></div>
+            <div class="day-section"><h4>Tasks</h4><div class="task-list" id="selectedDayTasks"></div></div>
+            <div class="day-section"><h4>Meetings</h4><div class="meeting-list" id="selectedDayMeetings"></div></div>
+          </article>
+        </div>
+      </section>
+
+
+      <section class="view" id="eventsView">
+        <article class="panel">
+          <div class="panel-title-row"><div><div class="eyebrow">Events</div><h3>イベント・記念日</h3><div class="panel-sub">状態や優先度を付けず、誕生日・記念日・行事を登録できます</div></div><button class="btn primary small" id="newEventBtn2">＋ イベント追加</button></div>
+          <div class="filters" style="grid-template-columns:minmax(190px,1.7fr) repeat(3,minmax(120px,1fr))">
+            <div class="field search-field"><label>検索</label><input id="eventSearch" placeholder="イベント名・メモを検索" /></div>
+            <div class="field"><label>カテゴリ</label><select id="eventCategoryFilter"><option value="all">すべて</option></select></div>
+            <div class="field"><label>種類</label><select id="eventTypeFilter"><option value="all">すべて</option></select></div>
+            <div class="field"><label>表示</label><select id="eventTimeFilter"><option value="upcoming">これから</option><option value="all">すべて</option><option value="past">過去</option></select></div>
+          </div>
+          <div class="event-list" id="eventList"></div>
+        </article>
+      </section>
+
+      <section class="view" id="futureView">
+        <article class="panel">
+          <div class="future-toolbar">
+            <div><div class="eyebrow">Future Log</div><h3 style="margin:4px 0 0">未来の予定を月ごとに置いておく</h3><div class="panel-sub">日付未定でも、年と月だけで登録できます</div></div>
+            <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+              <div class="field"><label>表示する年</label><input type="number" id="futureYear" min="2020" max="2100" style="width:120px" /></div>
+              <button class="btn primary" id="newFutureBtn">＋ Future項目</button>
+            </div>
+          </div>
+          <div class="future-year-grid" id="futureYearGrid"></div>
+        </article>
+      </section>
+
+      <section class="view" id="weeklyView">
+        <article class="panel">
+          <div class="weekly-toolbar">
+            <div><div class="eyebrow">Weekly Log</div><h3 id="weeklyTitle" style="margin:4px 0 0">今週</h3><div class="panel-sub" id="weeklyRangeHint">月曜日から日曜日までの予定・タスク・メモ</div></div>
+            <div style="display:flex;gap:7px;flex-wrap:wrap">
+              <button class="btn icon" id="prevWeekBtn">‹</button>
+              <button class="btn small" id="thisWeekBtn">今週</button>
+              <button class="btn icon" id="nextWeekBtn">›</button>
+              <button class="btn primary" id="saveWeeklyBtn">週間ログを保存</button>
+            </div>
+          </div>
+          <div id="weeklyFuturePanel"></div>
+          <div class="weekly-summary-grid">
+            <div class="field"><label>今週のゴール</label><textarea id="weeklyGoal" placeholder="今週いちばん大切なこと"></textarea></div>
+            <div class="field"><label>Top Priorities</label><textarea id="weeklyPriorities" placeholder="優先したいことを改行で"></textarea></div>
+            <div class="field"><label>Weekly Memo</label><textarea id="weeklyMemo" placeholder="今週のメモ・気づき"></textarea></div>
+          </div>
+          <div class="weekly-days" id="weeklyDays"></div>
+        </article>
+      </section>
+
+
+      <section class="view" id="dailyView">
+        <article class="panel">
+          <div class="daily-toolbar">
+            <div><div class="eyebrow">Daily Log</div><div class="daily-date-title" id="dailyTitle">今日</div><div class="panel-sub">一日の予定・タスク・記録をひとつのページで確認</div></div>
+            <div class="daily-controls">
+              <button class="btn icon" id="prevDayBtn" aria-label="前日">‹</button>
+              <div class="field"><label>表示する日</label><input type="date" id="dailyDateInput" /></div>
+              <button class="btn small" id="todayDailyBtn">今日</button>
+              <button class="btn icon" id="nextDayBtn" aria-label="翌日">›</button>
+              <button class="btn primary" id="saveDailyLogBtn">Daily Logを保存</button>
+            </div>
+          </div>
+          <div id="dailyFuturePanel"></div>
+          <div class="daily-planning-grid">
+            <div class="field"><label>Today's Goal｜今日のゴール</label><textarea id="dailyGoal" placeholder="今日いちばん大切なこと"></textarea></div>
+            <div class="field"><label>Top Priorities｜優先事項</label><textarea id="dailyPriorities" placeholder="優先したいことを改行で"></textarea></div>
+            <div class="field"><label>Daily Memo｜一日のメモ</label><textarea id="dailyMemo" placeholder="予定・気づき・覚え書き"></textarea></div>
+          </div>
+          <div class="daily-reflection-grid">
+            <div class="field"><label>Good Things｜よかったこと</label><textarea id="dailyGoodThings" placeholder="小さなことでもOK"></textarea></div>
+          </div>
+          <div class="daily-action-row">
+            <button class="btn small primary" id="dailyAddTaskBtn">＋ タスク</button>
+            <button class="btn small" id="dailyAddEventBtn">＋ イベント</button>
+            <button class="btn small" id="dailyAddMeetingBtn">＋ ミーティング</button>
+          </div>
+        </article>
+        <div class="daily-layout">
+          <div class="daily-stack">
+            <article class="panel"><div class="panel-title-row"><div><h3>Events</h3><div class="panel-sub">イベント・誕生日・記念日</div></div></div><div class="event-list" id="dailyEvents"></div></article>
+            <article class="panel"><div class="panel-title-row"><div><h3>Tasks</h3><div class="panel-sub">この日のタスク</div></div></div><div class="task-list" id="dailyTasks"></div></article>
+            <article class="panel"><div class="panel-title-row"><div><h3>Meetings</h3><div class="panel-sub">この日のミーティング</div></div></div><div class="meeting-list" id="dailyMeetings"></div></article>
+          </div>
+          <div class="daily-stack">
+            <article class="panel"><div class="panel-title-row"><div><h3>Future Items</h3><div class="panel-sub">日付が確定しているFuture Log</div></div></div><div id="dailyFutureItems"></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="triageView">
+        <div class="workflow-stepper" aria-label="タスク整理の手順">
+          <button class="workflow-step" type="button" data-workflow-target="workflowCaptureSection"><span class="workflow-step-number">STEP 01</span><strong>タスクを洗い出す</strong><small>思いついた作業を判断せずに全部入れる</small><span class="workflow-step-count" id="workflowCaptureCount">0</span></button>
+          <button class="workflow-step" type="button" data-workflow-target="workflowTriageSection"><span class="workflow-step-number">STEP 02</span><strong>重要度・緊急度で仕分け</strong><small>右の未仕分け一覧から3×3の表へ移動</small><span class="workflow-step-count" id="workflowTriageCount">0</span></button>
+          <button class="workflow-step" type="button" data-workflow-target="workflowDeadlineSection"><span class="workflow-step-number">STEP 03</span><strong>期限を決める</strong><small>仕分け後のタスクへ実行日を付ける</small><span class="workflow-step-count" id="workflowDeadlineCount">0</span></button>
+          <button class="workflow-step" type="button" data-workflow-view="future"><span class="workflow-step-number">STEP 04</span><strong>Future Logへ移す</strong><small>期限を決められない内容は月単位で保管</small><span class="workflow-step-count" id="workflowFutureCount">0</span></button>
+        </div>
+
+        <article class="panel workflow-capture-panel" id="workflowCaptureSection">
+          <div class="panel-title-row"><div><div class="eyebrow">Step 01 · Capture</div><h3>タスクの洗い出し</h3><div class="panel-sub">この段階では期限・重要度・緊急度を決めなくてOK。思いついたことを短く追加します</div></div><button class="btn small" id="workflowOpenFullTaskBtn" type="button">詳細入力で追加</button></div>
+          <form id="taskCaptureForm" class="workflow-capture-grid">
+            <div class="field"><label>タスク名</label><input id="captureTaskTitle" required placeholder="例：納涼祭の告知内容を考える" /></div>
+            <div class="field"><label>カテゴリ</label><select id="captureTaskCategory"></select></div>
+            <div class="field"><label>プロジェクト（任意）</label><select id="captureTaskProject"><option value="">紐づけなし</option></select></div>
+            <div class="field"><label>表示先</label><select id="captureTaskAudience"><option value="staff">スタッフ用</option></select></div>
+            <button class="btn primary workflow-capture-submit" type="submit">＋ 洗い出しに追加</button>
+            <div class="field workflow-capture-note"><label>メモ（任意）</label><input id="captureTaskNote" placeholder="補足や、思いついたきっかけなど" /></div>
+          </form>
+          <div class="workflow-status-line" id="workflowStatusLine"></div>
+        </article>
+
+        <div class="workflow-section-label">Step 02 · Sort</div>
+        <div class="triage-layout" id="workflowTriageSection">
+          <article class="panel">
+            <div class="triage-toolbar">
+              <div><div class="eyebrow">Task Triage</div><h3 style="margin:4px 0 0">重要度・緊急度で仕分け</h3><div class="panel-sub">右側の未仕分けタスクを表へドラッグすると、重要度と緊急度がタスクに反映されます</div>
+                <div class="triage-guide"><span class="tag">上ほど重要</span><span class="tag">右ほど緊急</span><span class="tag">A→B→C</span><span class="tag">1＝高・2＝中・3＝低</span></div>
+              </div>
+              <button class="btn small" id="triageNewTaskBtn" type="button">① 洗い出しへ</button>
+            </div>
+            <div class="triage-board-shell">
+              <div class="triage-corner"></div>
+              <div class="triage-column-heads" id="triageColumnHeads"></div>
+              <div class="triage-row-heads" id="triageRowHeads"></div>
+              <div class="triage-grid" id="triageGrid"></div>
+              <div class="triage-axis-bottom">緊 急 度　→</div>
+            </div>
+          </article>
+          <article class="panel triage-inbox-panel">
+            <div class="panel-title-row"><div><h3>未仕分けタスク</h3><div class="panel-sub" id="triageInboxCount">0件</div></div></div>
+            <div class="triage-inbox-filters">
+              <input id="triageSearch" placeholder="タスク名・メモを検索" />
+              <select id="triageCategoryFilter"><option value="all">すべてのカテゴリ</option></select>
+              <select id="triageStatusFilter"><option value="open">未完了のみ</option><option value="all">完了を含む</option></select>
+            </div>
+            <div class="triage-unassigned-drop" id="triageUnassignedDrop" data-triage-unassign="true">ここへ戻すと、重要度・緊急度を未設定に戻します</div>
+            <div class="triage-unassigned-list" id="triageUnassignedList"></div>
+          </article>
+        </div>
+
+        <article class="panel workflow-deadline-panel" id="workflowDeadlineSection">
+          <div class="panel-title-row"><div><div class="eyebrow">Step 03 · Schedule</div><h3>期限を決める</h3><div class="panel-sub">重要度・緊急度の仕分けが終わり、まだ期限がないタスクだけを表示します</div></div><span class="tag" id="workflowDeadlineSummary">0件</span></div>
+          <div class="workflow-deadline-list" id="workflowDeadlineList"></div>
+        </article>
+      </section>
+
+      <section class="view" id="tasksView">
+        <article class="panel">
+          <div class="panel-title-row"><div><h3 id="taskListHeading">タスク一覧</h3><div class="panel-sub" id="taskCountText">0件</div><div class="role-access-note" id="taskListAccessNote"></div></div><button class="btn primary small" id="newTaskBtn2">＋ 新規タスク</button></div>
+          <div class="filters">
+            <div class="field search-field"><label>検索</label><input id="taskSearch" placeholder="タイトル・メモを検索" /></div>
+            <div class="field"><label>カテゴリ</label><select id="categoryFilter"><option value="all">すべて</option><option>個人</option><option>仕事</option><option>荒嵜造船所</option><option>OKEANOS</option></select></div>
+            <div class="field"><label>状態</label><select id="statusFilter"><option value="open">未完了</option><option value="all">すべて</option><option value="inbox">Inbox</option><option value="todo">未着手</option><option value="doing">進行中</option><option value="waiting">待機中</option><option value="done">完了</option><option value="today">今日が期限</option><option value="overdue">期限切れ</option></select></div>
+            <div class="field"><label>優先度</label><select id="priorityFilter"><option value="all">すべて</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></div>
+            <div class="field"><label>種類</label><select id="typeFilter"><option value="all">すべて</option><option>制作</option><option>企画</option><option>運営</option><option>連絡・確認</option><option>ミーティング</option><option>イベント運営</option><option>SNS・告知</option><option>採用・面談</option><option>資料作成</option><option>家事・生活</option><option>学習</option><option>その他</option></select></div>
+            <div class="field"><label>重要度</label><select id="importanceFilter"><option value="all">すべて</option></select></div>
+            <div class="field"><label>緊急度</label><select id="urgencyFilter"><option value="all">すべて</option></select></div>
+            <div class="field"><label>並び順</label><select id="sortFilter"><option value="due">期限が近い順</option><option value="matrix">重要・緊急順</option><option value="importance">重要度順</option><option value="urgency">緊急度順</option><option value="created">新しい順</option><option value="priority">優先度順</option><option value="category">カテゴリ順</option></select></div>
+          </div>
+          <div class="task-list" id="taskList"></div>
+        </article>
+      </section>
+
+      <section class="view" id="projectsView">
+        <article class="panel">
+          <div class="panel-title-row"><div><h3>プロジェクト</h3><div class="panel-sub">目的・期限・関連タスクをまとめて管理</div></div><button class="btn primary small" id="newProjectBtn">＋ プロジェクト作成</button></div>
+          <div class="filters" style="grid-template-columns:1.5fr 1fr 1fr">
+            <div class="field"><label>検索</label><input id="projectSearch" placeholder="プロジェクト名・目的を検索" /></div>
+            <div class="field"><label>カテゴリ</label><select id="projectCategoryFilter"><option value="all">すべて</option><option>個人</option><option>仕事</option><option>荒嵜造船所</option><option>OKEANOS</option></select></div>
+            <div class="field"><label>状態</label><select id="projectStatusFilter"><option value="all">すべて</option><option value="planning">計画中</option><option value="active">進行中</option><option value="waiting">待機中</option><option value="completed">完了</option><option value="archived">保管</option></select></div>
+          </div>
+          <div class="project-grid" id="projectList"></div>
+        </article>
+      </section>
+
+      <section class="view" id="meetingsView">
+        <article class="panel">
+          <div class="panel-title-row"><div><h3>ミーティング記録</h3><div class="panel-sub">議題・決定事項・次の行動を残す</div></div><button class="btn primary small" id="newMeetingBtn">＋ ミーティング追加</button></div>
+          <div class="filters" style="grid-template-columns:1.5fr 1fr 1fr">
+            <div class="field"><label>検索</label><input id="meetingSearch" placeholder="会議名・議題・決定事項を検索" /></div>
+            <div class="field"><label>カテゴリ</label><select id="meetingCategoryFilter"><option value="all">すべて</option><option>個人</option><option>仕事</option><option>荒嵜造船所</option><option>OKEANOS</option></select></div>
+            <div class="field"><label>表示</label><select id="meetingTimeFilter"><option value="all">すべて</option><option value="upcoming">これから</option><option value="past">過去</option></select></div>
+          </div>
+          <div class="meeting-list" id="meetingList"></div>
+        </article>
+      </section>
+
+      <section class="view" id="notesView">
+        <article class="panel">
+          <div class="panel-title-row"><div><h3>アイデア・ノート</h3><div class="panel-sub">Idea Map・Note・Fileの入口として使えます</div></div><button class="btn primary small" id="newNoteBtn">＋ ノート追加</button></div>
+          <div class="note-toolbar">
+            <input id="noteSearch" placeholder="タイトル・内容を検索" />
+            <select id="noteTypeFilter"><option value="all">すべて</option><option>アイデア</option><option>ノート</option><option>リンク・資料</option><option>振り返り</option><option>その他</option></select>
+            <button class="btn" id="clearNoteFilterBtn">絞り込み解除</button>
+          </div>
+          <div class="note-list" id="noteList"></div>
+        </article>
+      </section>
+
+
+
+      <section class="view" id="mypageView">
+        <div class="mypage-layout">
+          <article class="panel">
+            <div class="panel-title-row"><div><div class="eyebrow">My Page</div><h3>スタッフプロフィール</h3><div class="panel-sub">Googleログイン情報とStaff Plannerの権限</div></div></div>
+            <div class="mypage-identity">
+              <div class="mypage-avatar-wrap"><img id="myPagePhoto" alt="Googleアカウントのプロフィール画像" hidden /><div class="mypage-avatar-fallback" id="myPageAvatarFallback">⚓</div></div>
+              <div><div class="mypage-name" id="myPageName">未ログイン</div><div class="mypage-email" id="myPageEmail"></div></div>
+              <span class="tag" id="myPageRole">スタッフ</span>
+            </div>
+            <div class="mypage-account-list">
+              <div class="mypage-account-row"><span>Discord</span><strong id="myPageDiscordDisplay">未登録</strong></div>
+              <div class="mypage-account-row"><span>VRChat</span><strong id="myPageVrchatDisplay">未登録</strong></div>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-title-row"><div><h3>アカウント情報を編集</h3><div class="panel-sub">スタッフ間で確認できるDiscord・VRChatアカウント</div></div></div>
+            <div class="form-grid">
+              <div class="field span-2"><label>Discordアカウント</label><input id="myPageDiscord" maxlength="100" placeholder="例：shina / @shina" /></div>
+              <div class="field span-2"><label>VRChatアカウント</label><input id="myPageVrchat" maxlength="100" placeholder="例：椎那 / VRChatユーザー名" /></div>
+            </div>
+            <div class="setting-help">ここに登録した情報は、荒嵜造船所Staff Plannerへ参加しているスタッフから確認できる共有プロフィール情報です。</div>
+            <div class="modal-actions"><button class="btn primary" id="saveMyPageBtn" type="button">マイページを保存</button></div>
+            <div class="mypage-status" id="myPageStatus" aria-live="polite"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="settingsView">
+        <article class="panel" style="margin-bottom:16px">
+          <div class="panel-title-row">
+            <div><div class="eyebrow">Menu</div><h3>左メニューのカスタマイズ</h3><div class="panel-sub">Discordのようにカテゴリとページの親子関係を編集できます</div></div>
+            <div class="menu-customize-toolbar"><button class="btn" id="newMenuGroupBtn">＋ カテゴリ追加</button><button class="btn" id="resetMenuBtn">初期配置へ戻す</button></div>
+          </div>
+          <div class="menu-customize-list" id="menuCustomizeList"></div>
+          <div class="menu-customize-help">≡をドラッグしてページをカテゴリへ重ねると親子関係を作れます。ページ同士へ重ねると同じ階層で並べ替えます。スマホでは「所属カテゴリ」プルダウンと↑↓ボタンが使えます。カテゴリ名・開閉状態・表示、ページの表示・ピン留めも保存されます。</div>
+        </article>
+        <article class="panel" id="staffManagementPanel" style="margin-bottom:16px" hidden>
+          <div class="panel-title-row">
+            <div><div class="eyebrow">Staff Administration</div><h3>スタッフ管理</h3><div class="panel-sub">参加申請の承認、ロール変更、利用停止、登録削除をサイト上で管理します</div></div>
+            <span class="tag" id="staffManagementPermission">オーナー・運営専用</span>
+          </div>
+          <div class="staff-management-grid">
+            <section class="staff-management-section">
+              <div class="staff-management-head"><div><h4>参加申請</h4><p>スタッフへこのサイトのURLを送り、Googleログイン後に申請してもらいます。</p></div><span class="tag" id="pendingRequestCount">0件</span></div>
+              <div class="staff-admin-list" id="joinRequestList"></div>
+            </section>
+            <section class="staff-management-section">
+              <div class="staff-management-head"><div><h4>登録スタッフ</h4><p>表示名・ロール・利用可否を変更できます。不要な登録は削除できます。オーナー自身は保護されます。</p></div><span class="tag" id="registeredMemberCount">0名</span></div>
+              <div class="staff-admin-list" id="staffMemberList"></div>
+            </section>
+          </div>
+          <div class="role-access-note"><strong>タスク一覧の閲覧範囲：</strong> オーナー＝すべて ／ 運営＝運営・スタッフ・キャスト ／ スタッフ＝スタッフ・キャスト ／ キャスト＝キャストのみ</div>
+          <div class="staff-management-message" id="staffManagementMessage" aria-live="polite"></div>
+        </article>
+        <article class="panel" style="margin-bottom:16px">
+          <div class="panel-title-row">
+            <div><div class="eyebrow">Appearance</div><h3>外観・テーマ設定</h3><div class="panel-sub">ライト／ダークとテーマカラーを自由に組み合わせられます</div></div>
+            <button class="btn" id="resetThemeBtn">Blue Darkへ戻す</button>
+          </div>
+          <div class="appearance-settings-grid">
+            <fieldset class="theme-fieldset">
+              <legend>表示モード</legend>
+              <div class="theme-choice-grid">
+                <label class="theme-choice"><input type="radio" name="themeMode" value="dark" /><span class="theme-choice-card"><span class="theme-mode-icon">🌙</span>ダーク</span></label>
+                <label class="theme-choice"><input type="radio" name="themeMode" value="light" /><span class="theme-choice-card"><span class="theme-mode-icon">☀️</span>ライト</span></label>
+              </div>
+            </fieldset>
+            <fieldset class="theme-fieldset">
+              <legend>テーマカラー</legend>
+              <div class="theme-color-grid">
+                <label class="theme-choice"><input type="radio" name="themeColor" value="blue" /><span class="theme-choice-card"><span class="theme-swatch blue"></span>Blue</span></label>
+                <label class="theme-choice"><input type="radio" name="themeColor" value="red" /><span class="theme-choice-card"><span class="theme-swatch red"></span>Red</span></label>
+                <label class="theme-choice"><input type="radio" name="themeColor" value="yellow" /><span class="theme-choice-card"><span class="theme-swatch yellow"></span>Yellow</span></label>
+                <label class="theme-choice"><input type="radio" name="themeColor" value="pink" /><span class="theme-choice-card"><span class="theme-swatch pink"></span>Pink</span></label>
+                <label class="theme-choice"><input type="radio" name="themeColor" value="green" /><span class="theme-choice-card"><span class="theme-swatch green"></span>Green</span></label>
+              </div>
+            </fieldset>
+          </div>
+          <div class="theme-preview-bar"><div><strong id="themePreviewTitle">Blue・ダーク</strong><br><span>この外観設定は端末ごとに保存され、他のスタッフには影響しません。</span></div><span class="tag" id="themePreviewTag">個人設定</span></div>
+        </article>
+        <article class="panel" style="margin-bottom:16px">
+          <div class="panel-title-row">
+            <div><div class="eyebrow">Calendar</div><h3>カレンダー設定</h3><div class="panel-sub">曜日の並びと日本の祝日表示を変更できます</div></div>
+          </div>
+          <div class="calendar-preferences-grid">
+            <div class="field"><label>週の開始曜日</label><select id="weekStartSetting"><option value="monday">月曜日始まり</option><option value="sunday">日曜日始まり</option></select></div>
+            <label class="preference-toggle"><input type="checkbox" id="showJapaneseHolidaysSetting" /><span><strong>日本の祝日を表示</strong><small>カレンダー・Weekly Log・Daily Logに表示します</small></span></label>
+          </div>
+          <div class="setting-help">週の開始曜日を変更すると、カレンダーの曜日見出しとWeekly Logの区切りが連動して変わります。既存データは削除されません。</div>
+        </article>
+        <article class="panel">
+          <div class="panel-title-row">
+            <div><div class="eyebrow">Dropdown</div><h3>プルダウン設定</h3><div class="panel-sub">≡をドラッグして候補の順番を変更できます。タスク種類はカテゴリごとに連動します</div></div>
+            <button class="btn" id="resetSettingsBtn">初期値へ戻す</button>
+          </div>
+          <div class="settings-grid" id="settingsGrid"></div>
+          <div class="setting-help">「完了」などアプリ動作に必要な項目は削除できません。使用中の候補も、先に該当データを変更するまで削除できません。</div>
+        </article>
+      </section>
+
+      <section class="view" id="backupView">
+        <div class="dashboard-grid">
+          <article class="panel"><div class="panel-title-row"><div><h3>データを書き出す</h3><div class="panel-sub">すべてのデータをJSONで保存</div></div></div><p class="muted" style="line-height:1.8;font-size:12px">ブラウザの履歴削除や端末変更に備えて、ときどき保存してください。</p><button class="btn primary" id="exportBtn">バックアップをダウンロード</button></article>
+          <article class="panel"><div class="panel-title-row"><div><h3>データを読み込む</h3><div class="panel-sub">以前のバックアップから復元</div></div></div><p class="muted" style="line-height:1.8;font-size:12px">現在の内容を、読み込んだバックアップで上書きします。</p><input type="file" id="importFile" accept="application/json,.json" /></article>
+          <article class="panel"><div class="panel-title-row"><div><h3>すべて削除</h3><div class="panel-sub">全データを初期化</div></div></div><p class="muted" style="line-height:1.8;font-size:12px">この操作は取り消せません。必要なら先にバックアップしてください。</p><button class="btn danger" id="resetBtn">全データを削除</button></article>
+          <article class="panel"><div class="panel-title-row"><div><h3>保存の仕組み</h3><div class="panel-sub">Firebase共有＋端末キャッシュ</div></div></div><p class="muted" style="line-height:1.8;font-size:12px">ログイン中は共有データベースへ同期し、ブラウザ内にも一時キャッシュを保存します。JSONバックアップはオーナーの退避用として利用できます。</p></article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <nav class="mobile-nav" id="mobileNav"></nav>
+
+  <dialog id="taskDialog">
+    <form method="dialog" id="taskForm">
+      <div class="modal-body">
+        <div class="modal-head"><h3 id="taskModalTitle">タスクを追加</h3><button class="icon-btn" type="button" data-close-dialog="taskDialog">✕</button></div>
+        <input type="hidden" id="taskId" />
+        <div class="modal-grid">
+          <div class="field span-2"><label>タスク名</label><input id="taskTitle" required placeholder="何をする？" /></div>
+          <div class="field"><label>カテゴリ</label><select id="taskCategory"><option>PRIVATE</option><option>WORK</option><option>LIFE</option><option>VRchat</option></select></div>
+          <div class="field"><label>種類</label><select id="taskType"><option value="PRIVATE__1">コンタクト交換</option><option value="PRIVATE__2">買い物</option></select></div>
+          <div class="field"><label>状態</label><select id="taskStatus"><option value="inbox">Inbox</option><option value="todo">未着手</option><option value="doing">進行中</option><option value="waiting">待機中</option><option value="done">完了</option></select></div>
+          <div class="field"><label>優先度</label><select id="taskPriority"><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></div>
+          <div class="field"><label>期限／最初の実行日</label><input type="date" id="taskDue" /></div>
+          <div class="field"><label>繰り返し</label><select id="taskRepeatType"><option value="none">繰り返しなし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option><option value="yearly">毎年</option></select></div>
+          <div class="field span-2 repeat-panel" id="taskRepeatPanel" hidden>
+            <div class="repeat-grid">
+              <div class="field"><label>繰り返す間隔</label><div class="repeat-interval-row"><span>毎</span><input type="number" id="taskRepeatInterval" min="1" max="99" value="1" /><span id="taskRepeatUnit">週</span></div></div>
+              <div class="field"><label>終了日（任意）</label><input type="date" id="taskRepeatUntil" /></div>
+            </div>
+            <div class="field" id="taskRepeatWeekdaysWrap" hidden style="margin-top:10px"><label>繰り返す曜日（複数選択可）</label>
+              <div class="weekday-picker" id="taskRepeatWeekdays">
+                <label class="weekday-option"><input type="checkbox" value="1" /><span>月</span></label>
+                <label class="weekday-option"><input type="checkbox" value="2" /><span>火</span></label>
+                <label class="weekday-option"><input type="checkbox" value="3" /><span>水</span></label>
+                <label class="weekday-option"><input type="checkbox" value="4" /><span>木</span></label>
+                <label class="weekday-option"><input type="checkbox" value="5" /><span>金</span></label>
+                <label class="weekday-option"><input type="checkbox" value="6" /><span>土</span></label>
+                <label class="weekday-option"><input type="checkbox" value="0" /><span>日</span></label>
+              </div>
+            </div>
+            <div class="repeat-help" id="taskRepeatHelp">完了にすると、次回の日付へ自動で進みます。カレンダーとWeekly Logには、その期間内の繰り返し予定も表示されます。</div>
+          </div>
+          <div class="field"><label>プロジェクト</label><select id="taskProject"><option value="">紐づけなし</option></select></div>
+          <div class="field"><label>タスクグループ</label><select id="taskGroup"><option value="">なし</option></select></div>
+          <div class="field"><label>表示するタスク一覧</label><select id="taskAudience"><option value="staff">スタッフ用タスク一覧</option></select></div>
+          <div class="field"><label>担当者</label><select id="taskAssignee"><option value="">未設定</option></select></div>
+          <div class="field"><label>確認担当</label><select id="taskReviewer"><option value="">未設定</option></select></div>
+          <div class="field"><label>重要度</label><select id="taskImportance"><option value="">未設定</option></select></div>
+          <div class="field"><label>緊急度</label><select id="taskUrgency"><option value="">未設定</option></select></div>
+          <div class="field span-2"><label>メモ</label><textarea id="taskNote" placeholder="補足、リンク、次の一歩など"></textarea></div>
+        </div>
+        <div class="form-error" id="taskFormError" role="alert" hidden></div>
+        <div class="modal-actions"><button type="button" class="btn ghost" data-close-dialog="taskDialog">キャンセル</button><button type="submit" class="btn primary">保存</button></div>
+      </div>
+    </form>
+  </dialog>
+
+
+
+
+  <dialog id="projectDialog">
+    <form method="dialog" id="projectForm">
+      <div class="modal-body">
+        <div class="modal-head"><h3 id="projectModalTitle">プロジェクトを作成</h3><button class="icon-btn" type="button" data-close-dialog="projectDialog">✕</button></div>
+        <input type="hidden" id="projectId" />
+        <div class="modal-grid">
+          <div class="field span-2"><label>プロジェクト名</label><input id="projectName" required placeholder="例：荒嵜造船所イベント制作" /></div>
+          <div class="field"><label>カテゴリ</label><select id="projectCategory"><option>個人</option><option>仕事</option><option>荒嵜造船所</option><option>OKEANOS</option></select></div>
+          <div class="field"><label>状態</label><select id="projectStatus"><option value="planning">計画中</option><option value="active">進行中</option><option value="waiting">待機中</option><option value="completed">完了</option><option value="archived">保管</option></select></div>
+          <div class="field"><label>開始日</label><input type="date" id="projectStart" /></div>
+          <div class="field"><label>期限</label><input type="date" id="projectDue" /></div>
+          <div class="field span-2"><label>目的・ゴール</label><textarea id="projectPurpose" placeholder="このプロジェクトで実現したいこと"></textarea></div>
+          <div class="field span-2"><label>メモ</label><textarea id="projectNote" placeholder="方針、関係者、参考リンクなど"></textarea></div>
+        </div>
+        <div class="modal-actions"><button type="button" class="btn ghost" data-close-dialog="projectDialog">キャンセル</button><button type="submit" class="btn primary">保存</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="meetingDialog">
+    <form method="dialog" id="meetingForm">
+      <div class="modal-body">
+        <div class="modal-head"><h3 id="meetingModalTitle">ミーティングを追加</h3><button class="icon-btn" type="button" data-close-dialog="meetingDialog">✕</button></div>
+        <input type="hidden" id="meetingId" />
+        <div class="modal-grid">
+          <div class="field span-2"><label>ミーティング名</label><input id="meetingTitle" required placeholder="例：定例MTG" /></div>
+          <div class="field"><label>カテゴリ</label><select id="meetingCategory"><option>個人</option><option>仕事</option><option>荒嵜造船所</option><option>OKEANOS</option></select></div>
+          <div class="field"><label>プロジェクト</label><select id="meetingProject"><option value="">紐づけなし</option></select></div>
+          <div class="field"><label>日付</label><input type="date" id="meetingDate" required /></div>
+          <div class="field"><label>時間</label><input type="time" id="meetingTime" /></div>
+          <div class="field span-2"><label>参加者</label><input id="meetingAttendees" placeholder="名前をカンマ区切りで入力" /></div>
+          <div class="field span-2"><label>議題</label><textarea id="meetingAgenda"></textarea></div>
+          <div class="field span-2"><label>決定事項</label><textarea id="meetingDecisions"></textarea></div>
+          <div class="field span-2"><label>保留・確認事項</label><textarea id="meetingPending"></textarea></div>
+          <div class="field span-2"><label>次の行動</label><textarea id="meetingNextActions" placeholder="誰が・何を・いつまでに"></textarea></div>
+        </div>
+        <div class="modal-actions"><button type="button" class="btn ghost" data-close-dialog="meetingDialog">キャンセル</button><button type="submit" class="btn primary">保存</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="noteDialog">
+    <form method="dialog" id="noteForm">
+      <div class="modal-body">
+        <div class="modal-head"><h3 id="noteModalTitle">ノートを追加</h3><button class="icon-btn" type="button" data-close-dialog="noteDialog">✕</button></div>
+        <input type="hidden" id="noteId" />
+        <div class="modal-grid">
+          <div class="field span-2"><label>タイトル</label><input id="noteTitle" required /></div>
+          <div class="field"><label>種類</label><select id="noteType"><option>アイデア</option><option>ノート</option><option>リンク・資料</option><option>振り返り</option><option>その他</option></select></div>
+          <div class="field"><label>カテゴリ</label><select id="noteCategory"><option>個人</option><option>仕事</option><option>荒嵜造船所</option><option>OKEANOS</option></select></div>
+          <div class="field"><label>プロジェクト</label><select id="noteProject"><option value="">紐づけなし</option></select></div>
+          <div class="field"><label>日付</label><input type="date" id="noteDate" /></div>
+          <div class="field span-2"><label>内容</label><textarea id="noteContent" style="min-height:180px"></textarea></div>
+        </div>
+        <div class="modal-actions"><button type="button" class="btn ghost" data-close-dialog="noteDialog">キャンセル</button><button type="submit" class="btn primary">保存</button></div>
+      </div>
+    </form>
+  </dialog>
+
+
+  <dialog id="eventDialog">
+    <form method="dialog" id="eventForm">
+      <div class="modal-body">
+        <div class="modal-head"><h3 id="eventModalTitle">イベントを追加</h3><button class="icon-btn" type="button" data-close-dialog="eventDialog">✕</button></div>
+        <input type="hidden" id="eventId" />
+        <div class="modal-grid">
+          <div class="field span-2"><label>イベント名</label><input id="eventTitle" required placeholder="例：翠羽集会／納涼祭／スタッフ講習会" /></div>
+          <div class="field"><label>カテゴリ</label><select id="eventCategory"></select></div>
+          <div class="field"><label>種類</label><select id="eventType"></select></div>
+          <div class="field"><label>日付／最初の開催日</label><input type="date" id="eventDate" required /></div>
+          <div class="field"><label>時間（任意）</label><input type="time" id="eventTime" /><div class="panel-sub">時間を入力すると「終日イベント」は自動で解除されます。</div></div>
+          <div class="field"><label>表示</label><div class="all-day-row"><input type="checkbox" id="eventAllDay" checked /><span class="muted">終日イベント</span></div></div>
+          <div class="field"><label>繰り返し</label><select id="eventRepeatType"><option value="none">繰り返しなし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option><option value="yearly">毎年</option></select></div>
+          <div class="field span-2 repeat-panel" id="eventRepeatPanel" hidden>
+            <div class="repeat-grid">
+              <div class="field"><label>繰り返す間隔</label><div class="repeat-interval-row"><span>毎</span><input type="number" id="eventRepeatInterval" min="1" max="99" value="1" /><span id="eventRepeatUnit">年</span></div></div>
+              <div class="field"><label>終了日（任意）</label><input type="date" id="eventRepeatUntil" /></div>
+            </div>
+            <div class="field" id="eventRepeatWeekdaysWrap" hidden style="margin-top:10px"><label>繰り返す曜日（複数選択可）</label>
+              <div class="weekday-picker" id="eventRepeatWeekdays">
+                <label class="weekday-option"><input type="checkbox" value="1" /><span>月</span></label>
+                <label class="weekday-option"><input type="checkbox" value="2" /><span>火</span></label>
+                <label class="weekday-option"><input type="checkbox" value="3" /><span>水</span></label>
+                <label class="weekday-option"><input type="checkbox" value="4" /><span>木</span></label>
+                <label class="weekday-option"><input type="checkbox" value="5" /><span>金</span></label>
+                <label class="weekday-option"><input type="checkbox" value="6" /><span>土</span></label>
+                <label class="weekday-option"><input type="checkbox" value="0" /><span>日</span></label>
+              </div>
+            </div>
+            <div class="repeat-help" id="eventRepeatHelp">誕生日や記念日は「毎年」を選ぶと、毎年カレンダーに表示されます。</div>
+          </div>
+          <div class="field span-2"><label>メモ</label><textarea id="eventNote" placeholder="会場、担当、準備物、告知URLなど"></textarea></div>
+        </div>
+        <div class="modal-actions"><button type="button" class="btn ghost" data-close-dialog="eventDialog">キャンセル</button><button type="submit" class="btn primary">保存</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="futureDialog">
+    <form method="dialog" id="futureForm">
+      <div class="modal-body">
+        <div class="modal-head"><h3 id="futureModalTitle">Future項目を追加</h3><button class="icon-btn" type="button" data-close-dialog="futureDialog">✕</button></div>
+        <input type="hidden" id="futureId" />
+        <div class="future-move-notice" id="futureMoveNotice" hidden>保存すると元のタスクはタスク一覧から削除され、Future Logへ移動します。Future Logから再びタスク化した場合は、未仕分けタスクとして整理し直せます。</div>
+        <div class="modal-grid">
+          <div class="field span-2"><label>予定・やりたいこと</label><input id="futureTitle" required placeholder="例：秋頃に新衣装を公開する" /></div>
+          <div class="field"><label>年</label><input type="number" id="futureItemYear" min="2020" max="2100" required /></div>
+          <div class="field"><label>月</label><select id="futureItemMonth"></select></div>
+          <div class="field"><label>日付（任意）</label><input type="date" id="futureDate" /></div>
+          <div class="field"><label>カテゴリ</label><select id="futureCategory"></select></div>
+          <div class="field span-2"><label>メモ</label><textarea id="futureNote" placeholder="日付未定の理由、準備しておくことなど"></textarea></div>
+        </div>
+        <div class="modal-actions"><button type="button" class="btn ghost" data-close-dialog="futureDialog">キャンセル</button><button type="submit" class="btn primary">保存</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="futureScheduleDialog">
+    <div class="modal-body">
+      <div class="modal-head"><h3>Future Logを日付へ配置</h3><button class="icon-btn" type="button" data-close-dialog="futureScheduleDialog">✕</button></div>
+      <input type="hidden" id="futureScheduleId" />
+      <div class="future-drop-summary" id="futureScheduleSummary"></div>
+      <div class="field" style="margin-top:12px"><label>配置する日付</label><input type="date" id="futureScheduleDate" required /></div>
+      <div class="future-drop-options" role="radiogroup" aria-label="配置方法">
+        <div class="future-drop-option"><label class="form-check"><input class="form-check-input" type="radio" name="futureScheduleMode" value="move" checked /><span class="form-check-label"><strong>タスクへ移動</strong><small>期限付きタスクを作成し、Future Logから元項目を削除します。</small></span></label></div>
+        <div class="future-drop-option"><label class="form-check"><input class="form-check-input" type="radio" name="futureScheduleMode" value="copy" /><span class="form-check-label"><strong>タスクへコピー</strong><small>期限付きタスクを作成し、Future Logの元項目も残します。</small></span></label></div>
+        <div class="future-drop-option"><label class="form-check"><input class="form-check-input" type="radio" name="futureScheduleMode" value="dateOnly" /><span class="form-check-label"><strong>Future Logのまま日付を確定</strong><small>タスクにはせず、Future項目へ日付だけ設定します。</small></span></label></div>
+      </div>
+      <div class="modal-actions"><button type="button" class="btn ghost" data-close-dialog="futureScheduleDialog">キャンセル</button><button type="button" class="btn primary" id="applyFutureScheduleBtn">この日へ配置</button></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast"></div>
+  <script src="./assets/js/app-v0.8.js" defer></script>
+  <script type="module" src="./assets/js/firebase-v0.8.js"></script>
+
+</body>
+</html>
