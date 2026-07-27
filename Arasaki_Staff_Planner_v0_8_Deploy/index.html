@@ -319,7 +319,7 @@
 
       <section class="view" id="tasksView">
         <article class="panel">
-          <div class="panel-title-row"><div><h3 id="taskListHeading">タスク一覧</h3><div class="panel-sub" id="taskCountText">0件</div><div class="role-access-note" id="taskListAccessNote"></div></div><button class="btn primary small" id="newTaskBtn2">＋ 新規タスク</button></div>
+          <div class="panel-title-row"><div><h3 id="taskListHeading">タスク一覧</h3><div class="panel-sub" id="taskCountText">0件</div><div class="role-access-note" id="taskListAccessNote"></div></div><button class="btn primary small task-create-control" id="newTaskBtn2">＋ 新規タスク</button></div>
           <div class="filters">
             <div class="field search-field"><label>検索</label><input id="taskSearch" placeholder="タイトル・メモを検索" /></div>
             <div class="field"><label>カテゴリ</label><select id="categoryFilter"><option value="all">すべて</option><option>個人</option><option>仕事</option><option>荒嵜造船所</option><option>OKEANOS</option></select></div>
@@ -328,7 +328,7 @@
             <div class="field"><label>種類</label><select id="typeFilter"><option value="all">すべて</option><option>制作</option><option>企画</option><option>運営</option><option>連絡・確認</option><option>ミーティング</option><option>イベント運営</option><option>SNS・告知</option><option>採用・面談</option><option>資料作成</option><option>家事・生活</option><option>学習</option><option>その他</option></select></div>
             <div class="field"><label>重要度</label><select id="importanceFilter"><option value="all">すべて</option></select></div>
             <div class="field"><label>緊急度</label><select id="urgencyFilter"><option value="all">すべて</option></select></div>
-            <div class="field"><label>並び順</label><select id="sortFilter"><option value="due">期限が近い順</option><option value="matrix">重要・緊急順</option><option value="importance">重要度順</option><option value="urgency">緊急度順</option><option value="created">新しい順</option><option value="priority">優先度順</option><option value="category">カテゴリ順</option></select></div>
+            <div class="field"><label>並び順</label><select id="sortFilter"><option value="due">期限が近い順</option><option value="group">タスクグループ順</option><option value="matrix">重要・緊急順</option><option value="importance">重要度順</option><option value="urgency">緊急度順</option><option value="created">新しい順</option><option value="priority">優先度順</option><option value="category">カテゴリ順</option></select></div>
           </div>
           <div class="task-list" id="taskList"></div>
         </article>
@@ -390,7 +390,7 @@
             <div class="panel-title-row"><div><h3>アカウント情報を編集</h3><div class="panel-sub">スタッフ間で確認できるDiscord・VRChatアカウント</div></div></div>
             <div class="form-grid">
               <div class="field span-2"><label>Discordアカウント</label><input id="myPageDiscord" maxlength="100" placeholder="例：shina / @shina" /></div>
-              <div class="field span-2"><label>VRChatアカウント</label><input id="myPageVrchat" maxlength="100" placeholder="例：椎那 / VRChatユーザー名" /></div>
+              <div class="field span-2"><label>VRChatアカウントURL</label><input id="myPageVrchat" type="url" maxlength="300" inputmode="url" placeholder="https://vrchat.com/home/user/..." /></div>
             </div>
             <div class="setting-help">ここに登録した情報は、荒嵜造船所Staff Plannerへ参加しているスタッフから確認できる共有プロフィール情報です。</div>
             <div class="modal-actions"><button class="btn primary" id="saveMyPageBtn" type="button">マイページを保存</button></div>
@@ -462,7 +462,7 @@
           </div>
           <div class="setting-help">週の開始曜日を変更すると、カレンダーの曜日見出しとWeekly Logの区切りが連動して変わります。既存データは削除されません。</div>
         </article>
-        <article class="panel">
+        <article class="panel" id="dropdownSettingsPanel">
           <div class="panel-title-row">
             <div><div class="eyebrow">Dropdown</div><h3>プルダウン設定</h3><div class="panel-sub">≡をドラッグして候補の順番を変更できます。タスク種類はカテゴリごとに連動します</div></div>
             <button class="btn" id="resetSettingsBtn">初期値へ戻す</button>

@@ -1091,6 +1091,17 @@
     }
     html[data-theme-mode="light"] .auth-card { background:linear-gradient(150deg,#fff,#eef4f8); box-shadow:0 26px 80px rgba(31,54,76,.18); }
     html[data-theme-mode="light"] .google-g { color:#18304a; }
+    html[data-theme-mode="light"] {
+      --accent-contrast:#ffffff;
+      --success:#167852;
+      --warning:#9a5b00;
+      --danger:#c8324b;
+    }
+    html[data-theme-mode="light"][data-theme-color="yellow"] { --accent:#9a6900; --accent-2:#b87700; --cyan:#8a7200; --accent-contrast:#ffffff; }
+    html[data-theme-mode="light"][data-theme-color="green"] { --accent:#167852; --accent-2:#26785f; --cyan:#197768; }
+    html[data-theme-mode="light"] :is(.tag,.cal-item,.week-event,.event-time,.eyebrow) { font-weight:700; }
+    html[data-theme-mode="light"] .cal-item { color:#17324c; background:color-mix(in srgb,var(--accent) 12%,white); }
+    html[data-theme-mode="light"] .btn:hover { background:color-mix(in srgb,var(--accent) 10%,white); }
 
     html[data-theme-mode="light"] :is(
       .category-card,.task-card,.log-card,.project-card,.meeting-card,.note-card,.future-month-card,
@@ -1116,6 +1127,12 @@
     .menu-settings-shortcut { background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,transparent),color-mix(in srgb,var(--accent-2) 8%,transparent)); }
     .staff-user-avatar,.menu-group-badge { background:color-mix(in srgb,var(--accent) 18%,transparent); }
     .context-future-wrap { border-color:color-mix(in srgb,var(--accent) 30%,transparent); background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 14%,transparent),color-mix(in srgb,var(--accent-2) 9%,transparent)); }
+    .toast { display:flex; align-items:center; gap:12px; }
+    .toast-undo { border:1px solid currentColor; border-radius:8px; padding:5px 9px; color:var(--accent); background:transparent; font:inherit; font-weight:850; cursor:pointer; }
+    .task-audience-draggable { cursor:grab; }
+    .task-audience-draggable.dragging { opacity:.48; }
+    .nav-button.task-audience-drop-over { border-color:var(--accent); background:var(--accent-soft); box-shadow:inset 3px 0 0 var(--accent),0 0 0 2px var(--accent-soft); }
+    body.task-create-disabled :is(.weekly-add-task,.future-task,.note-to-task) { display:none !important; }
 
     .appearance-settings-grid { display:grid; grid-template-columns:minmax(230px,.72fr) minmax(330px,1.28fr); gap:14px; }
     .theme-fieldset { margin:0; padding:13px; border:1px solid var(--line); border-radius:14px; min-width:0; background:var(--surface-card); }

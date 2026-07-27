@@ -211,7 +211,12 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       if(photoEl&&fallback){photoEl.hidden=!photo;fallback.hidden=!!photo;if(photo)photoEl.src=photo;fallback.textContent=name.slice(0,1)||'⚓';}
       const setText=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value;};
       setText('myPageName',name);setText('myPageEmail',activeUser?.email||'');setText('myPageRole',activeUser?.roleLabel||roleLabels[activeUser?.role]||'スタッフ');
-      setText('myPageDiscordDisplay',profile.discord||'未登録');setText('myPageVrchatDisplay',profile.vrchat||'未登録');
+      setText('myPageDiscordDisplay',profile.discord||'未登録');
+      const vrchatDisplay=document.getElementById('myPageVrchatDisplay');
+      if(vrchatDisplay){
+        const url=profile.vrchat||'';
+        vrchatDisplay.innerHTML=url?`<a href="${safe(url)}" target="_blank" rel="noopener noreferrer">VRChatプロフィールを開く ↗</a>`:'未登録';
+      }
       const discord=document.getElementById('myPageDiscord');const vrchat=document.getElementById('myPageVrchat');
       if(discord&&document.activeElement!==discord)discord.value=profile.discord||'';
       if(vrchat&&document.activeElement!==vrchat)vrchat.value=profile.vrchat||'';
@@ -220,6 +225,12 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       if(!db||!activeUser)return;
       const discord=document.getElementById('myPageDiscord')?.value.trim()||'';
       const vrchat=document.getElementById('myPageVrchat')?.value.trim()||'';
+      if(vrchat){
+        try{
+          const parsed=new URL(vrchat);
+          if(parsed.protocol!=='https:'||!/(^|\.)vrchat\.com$/i.test(parsed.hostname))throw new Error();
+        }catch(_){setMyPageStatus('VRChatのプロフィールURL（https://vrchat.com/...）を入力してください。','error');return;}
+      }
       setMyPageStatus('マイページを保存しています…');
       try{
         const current=profilesData[activeUser.uid]||{};
@@ -607,7 +618,11 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       if(button.dataset.memberAction==='delete')deleteMember(row.dataset.memberUid);
     });
 
-    signOutBtn?.addEventListener('click',async()=>{ if(auth)await signOut(auth); });
+    signOutBtn?.addEventListener('click',async()=>{
+      if(!auth)return;
+      if(!confirm('ログアウトしますか？\\n未同期の変更がある場合は、通信状態を確認してからログアウトしてください。'))return;
+      await signOut(auth);
+    });
 
     if(!configured()){
       loginBtn.disabled=true;
