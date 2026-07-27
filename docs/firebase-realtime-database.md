@@ -83,6 +83,16 @@ teams/
 `GOOGLE_AUTH_UID` はAuthentication > Usersに表示されるUIDと完全一致させます。
 初回ownerログイン時にプロフィールと `workspace` schema v2が作成されます。
 
+## Hosting・ローカル開発時の設定
+
+Firebase Hosting本番では、予約URL `/__/firebase/init.json` から、そのHostingサイトに
+紐づくFirebase Web設定を自動取得します。API設定をGitHubやビルド環境へ登録する必要は
+ありません。`TEAM_ID` は `arasaki-shipyard` を使用します。
+
+ViteなどFirebase Hosting以外のローカルサーバーでは予約URLが利用できないため、
+`config.example.js` を `config.js` にコピーしてFirebase Web設定を入力してください。
+`config.js` はGit管理対象外です。
+
 ## CLIでのルール反映
 
 Firebase CLIで対象プロジェクトを選択した後に実行します。

@@ -1,7 +1,22 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
     import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
     import { getDatabase, ref, get, set, update, onValue, onChildAdded, onChildChanged, onChildRemoved, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js';
-    import { FIREBASE_CONFIG, TEAM_ID } from './config.js?v=0.8';
+
+    const DEFAULT_TEAM_ID='arasaki-shipyard';
+    async function loadFirebaseRuntimeConfig() {
+      try {
+        const response=await fetch('/__/firebase/init.json',{cache:'no-store'});
+        const contentType=response.headers.get('content-type')||'';
+        if(!response.ok||!contentType.includes('application/json'))throw new Error(`Firebase Hosting config: ${response.status}`);
+        const config=await response.json();
+        if(!config?.apiKey||!config?.projectId||!config?.appId)throw new Error('Firebase Hosting config is incomplete');
+        return {FIREBASE_CONFIG:config,TEAM_ID:DEFAULT_TEAM_ID};
+      } catch (hostingError) {
+        console.info('Firebase Hosting外のため、ローカルconfig.jsを使用します。',hostingError);
+        return import('./config.js?v=0.8');
+      }
+    }
+    const {FIREBASE_CONFIG,TEAM_ID}=await loadFirebaseRuntimeConfig();
 
     const roleLabels = {owner:'オーナー',operations:'運営',staff:'スタッフ',cast:'キャスト',admin:'運営',member:'スタッフ',viewer:'キャスト'};
     const roleOrder = {owner:0,operations:1,admin:1,staff:2,member:2,cast:3,viewer:3};
