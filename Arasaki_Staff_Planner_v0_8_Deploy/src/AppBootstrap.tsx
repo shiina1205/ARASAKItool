@@ -4,7 +4,12 @@ type BootState = 'loading' | 'ready' | 'error';
 
 let legacyBootPromise: Promise<void> | undefined;
 
-function loadScript(src: string, module = false): Promise<void> {
+function runtimeAsset(fileName: string): string {
+  return new URL(`assets/js/${fileName}`, `${window.location.origin}${import.meta.env.BASE_URL}`).href;
+}
+
+function loadScript(fileName: string, module = false): Promise<void> {
+  const src = runtimeAsset(fileName);
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = src;
@@ -16,8 +21,8 @@ function loadScript(src: string, module = false): Promise<void> {
 }
 
 function bootLegacyApp(): Promise<void> {
-  legacyBootPromise ??= loadScript('./assets/js/app-v0.8.js')
-    .then(() => loadScript('./assets/js/firebase-v0.8.js', true));
+  legacyBootPromise ??= loadScript('app-v0.8.js')
+    .then(() => loadScript('firebase-v0.8.js', true));
   return legacyBootPromise;
 }
 
