@@ -27,6 +27,7 @@ Reactコンポーネントへ移行できます。
 Realtime Databaseの構成、権限、初期owner登録、ルールの反映方法は
 [`docs/firebase-realtime-database.md`](docs/firebase-realtime-database.md) を参照してください。
 
-Firebase設定は
-`Arasaki_Staff_Planner_v0_8_Deploy/assets/js/config.example.js` を `config.js` にコピーして
-入力します。実値を含む `config.js` はGit管理対象外です。
+Firebase Hostingでは `/__/firebase/init.json` から設定を自動取得します。
+Cloudflare PagesなどFirebase Hosting以外では、起動コード内の公開Web設定を使用します。
+別のFirebaseプロジェクトを使うローカル開発では
+`Arasaki_Staff_Planner_v0_8_Deploy/assets/js/config.example.js` を参考に設定してください。

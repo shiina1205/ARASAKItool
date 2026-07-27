@@ -3,6 +3,18 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
     import { getDatabase, ref, get, set, update, onValue, onChildAdded, onChildChanged, onChildRemoved, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js';
 
     const DEFAULT_TEAM_ID='arasaki-shipyard';
+    // Firebase Hosting以外（Cloudflare Pages・ローカルプレビュー）で使用する公開Web設定。
+    // FirebaseのWeb設定値はクライアントへ配布される識別情報で、アクセス制御はDatabase Rulesで行います。
+    const FALLBACK_FIREBASE_CONFIG={
+      apiKey:'AIzaSyCyU5P4tVWio1e5_qGOmgfj3r4yq7bZVzo',
+      authDomain:'arasaki-f7677.firebaseapp.com',
+      databaseURL:'https://arasaki-f7677-default-rtdb.firebaseio.com',
+      projectId:'arasaki-f7677',
+      storageBucket:'arasaki-f7677.firebasestorage.app',
+      messagingSenderId:'281880279311',
+      appId:'1:281880279311:web:030fb9651131fcf5d8a67a',
+      measurementId:'G-CM3VFK7CWH'
+    };
     async function loadFirebaseRuntimeConfig() {
       try {
         const response=await fetch('/__/firebase/init.json',{cache:'no-store'});
@@ -12,8 +24,8 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         if(!config?.apiKey||!config?.projectId||!config?.appId)throw new Error('Firebase Hosting config is incomplete');
         return {FIREBASE_CONFIG:config,TEAM_ID:DEFAULT_TEAM_ID};
       } catch (hostingError) {
-        console.info('Firebase Hosting外のため、ローカルconfig.jsを使用します。',hostingError);
-        return import('./config.js?v=0.8');
+        console.info('Firebase Hosting外のため、組み込みのFirebase Web設定を使用します。',hostingError);
+        return {FIREBASE_CONFIG:FALLBACK_FIREBASE_CONFIG,TEAM_ID:DEFAULT_TEAM_ID};
       }
     }
     const {FIREBASE_CONFIG,TEAM_ID}=await loadFirebaseRuntimeConfig();
