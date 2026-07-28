@@ -55,7 +55,7 @@ export function AppBootstrap() {
 
   return (
     <span className="version-badge" aria-live="polite">
-      {bootState === 'ready' ? 'React + TypeScript v0.9 ✓' : 'React + TypeScript（読込中）'}
+      {bootState === 'ready' ? '同期システム稼働中' : 'システム読込中'}
     </span>
   );
 }

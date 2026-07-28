@@ -88,7 +88,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
 
     const WORKSPACE_PATH=`teams/${TEAM_ID}/workspace`;
     const LEGACY_PLANNER_PATH=`teams/${TEAM_ID}/planner`;
-    const ARRAY_SECTIONS=['events','projects','meetings','notes','futureItems','changeLog'];
+    const ARRAY_SECTIONS=['events','projects','meetings','schedulePolls','notes','futureItems','changeLog'];
     const MAP_SECTIONS=['yearlyLogs','weeklyLogs','dailyEntries'];
     const clone=value=>JSON.parse(JSON.stringify(value??null));
     const jsonEqual=(a,b)=>JSON.stringify(a??null)===JSON.stringify(b??null);
@@ -101,7 +101,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       return ['cast'];
     };
     function emptyWorkspaceState(seed={}){
-      return {...seed,tasks:[],events:[],projects:[],meetings:[],notes:[],futureItems:[],yearlyLogs:{},weeklyLogs:{},dailyEntries:{},changeLog:[]};
+      return {...seed,tasks:[],events:[],projects:[],meetings:[],schedulePolls:[],notes:[],futureItems:[],yearlyLogs:{},weeklyLogs:{},dailyEntries:{},changeLog:[]};
     }
     function buildWorkspaceUpdates(previous,next,{includeMeta=true}={}){
       const updates={};
