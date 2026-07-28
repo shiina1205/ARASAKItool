@@ -160,7 +160,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         menuPage('future',{parentId:'group-log'}), menuPage('yearly',{parentId:'group-log'}), menuPage('weekly',{parentId:'group-log'}), menuPage('daily',{parentId:'group-log'}),
         {...DEFAULT_MENU_GROUPS[1]},
         menuPage('tasksAll',{parentId:'group-list'}), menuPage('tasksOperations',{parentId:'group-list'}), menuPage('tasksStaff',{parentId:'group-list'}), menuPage('tasksCast',{parentId:'group-list'}),
-        menuPage('events',{parentId:'group-list'}), menuPage('projects',{parentId:'group-list'}), menuPage('meetings',{parentId:'group-list'}), menuPage('schedulePolls',{parentId:'group-list'}),
+        menuPage('events',{parentId:'group-list'}), menuPage('projects',{parentId:'group-list'}), menuPage('meetings',{parentId:'group-list'}),
+        menuPage('schedulePolls'),
         menuPage('notes'), menuPage('backup',{visible:false}), menuPage('settings',{visible:false})
       ];
     }
@@ -187,6 +188,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         if(['tasksAll','tasksOperations','tasksStaff','tasksCast'].includes(view))page.parentId='group-list';
         if(view==='mypage')page.parentId=null;
       });
+      const schedulePollPage=result.find(item=>item.type==='page'&&item.view==='schedulePolls');
+      if(schedulePollPage)schedulePollPage.parentId=null;
       return result;
     }
     function normalizeMenuConfig(config) {
