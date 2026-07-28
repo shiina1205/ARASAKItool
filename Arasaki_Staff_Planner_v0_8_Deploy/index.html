@@ -610,7 +610,7 @@
           <div class="field span-2"><label>説明（任意）</label><textarea id="schedulePollDescription" placeholder="相談したい内容や、所要時間など"></textarea></div>
           <div class="field"><label>候補期間の開始日</label><input type="date" id="schedulePollStart" required /></div>
           <div class="field"><label>候補期間の終了日</label><input type="date" id="schedulePollEnd" required /></div>
-          <div class="field span-2"><label>候補時間</label><input id="schedulePollTimes" required placeholder="例：20:00, 21:00, 22:00" /><div class="panel-sub">複数の場合はカンマ区切り。期間内の各日 × 候補時間を自動で作ります。</div></div>
+          <div class="field span-2"><label>候補時間（複数選択可）</label><div class="schedule-time-picker" id="schedulePollTimePicker"></div><button class="btn small schedule-add-time" id="scheduleAddTimeBtn" type="button">＋ 時間を追加</button><div class="panel-sub">期間内の各日 × 選択した時間を候補として自動で作ります。</div></div>
           <div class="field"><label>回答期限</label><input type="date" id="schedulePollDeadline" required /></div>
           <label class="preference-toggle"><input type="checkbox" id="schedulePollNotify" checked /><span><strong>未回答者へ通知する</strong><small>回答完了まで全画面の左上に表示</small></span></label>
         </div>
