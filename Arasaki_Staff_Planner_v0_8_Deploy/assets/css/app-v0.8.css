@@ -674,11 +674,22 @@
 
     /* v3.7 event management */
     .event-list { display:grid; gap:9px; }
-    .event-card {
+.event-card {
       border:1px solid rgba(140,123,255,.22); border-radius:15px; padding:13px;
       background:linear-gradient(135deg,rgba(44,38,94,.28),rgba(8,25,43,.78));
       transition:.15s ease;
-    }
+}
+
+.inline-actions,.meeting-rsvp{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.meeting-rsvp{margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+.event-card[class*="event-type-"],.cal-item[class*="event-type-"]{border-left:4px solid transparent}
+.event-type-0{background:color-mix(in srgb,#54c7ec 14%,var(--panel));border-left-color:#54c7ec!important}
+.event-type-1{background:color-mix(in srgb,#a78bfa 14%,var(--panel));border-left-color:#a78bfa!important}
+.event-type-2{background:color-mix(in srgb,#fb7185 14%,var(--panel));border-left-color:#fb7185!important}
+.event-type-3{background:color-mix(in srgb,#34d399 14%,var(--panel));border-left-color:#34d399!important}
+.event-type-4{background:color-mix(in srgb,#fbbf24 14%,var(--panel));border-left-color:#fbbf24!important}
+.event-type-5{background:color-mix(in srgb,#60a5fa 14%,var(--panel));border-left-color:#60a5fa!important}
+.private-event{background:color-mix(in srgb,#94a3b8 12%,var(--panel));border-left-color:#94a3b8!important}
     .event-card:hover { border-color:rgba(156,143,255,.42); transform:translateY(-1px); }
     .event-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
     .event-title { font-size:13px; font-weight:820; line-height:1.45; }
