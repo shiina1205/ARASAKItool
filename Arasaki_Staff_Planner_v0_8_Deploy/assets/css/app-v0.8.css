@@ -1093,6 +1093,10 @@
       --modal-bg-2:#f3f7fa;
     }
     html[data-theme-mode="dark"] { color-scheme: dark; }
+    html[data-theme-mode="dark"] input:is([type="date"],[type="time"],[type="datetime-local"],[type="month"])::-webkit-calendar-picker-indicator {
+      filter:none;
+      opacity:.92;
+    }
 
     html[data-theme-mode="light"] body {
       background:
