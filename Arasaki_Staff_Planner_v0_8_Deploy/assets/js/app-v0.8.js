@@ -1909,6 +1909,19 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         return {slot,yes:values.filter(value=>value==='yes').length,maybe:values.filter(value=>value==='maybe').length,no:values.filter(value=>value==='no').length,total:values.length,score:values.filter(value=>value==='yes').length*2+values.filter(value=>value==='maybe').length};
       }).sort((a,b)=>b.score-a.score||b.yes-a.yes||a.no-b.no);
     }
+    function scheduleResponseDetailsHtml(poll) {
+      return Object.values(poll.responses||{}).map(response=>`<article class="schedule-response-person">
+        <div class="schedule-response-person-head"><strong>${escapeHtml(response.name||'スタッフ')}</strong><small>${response.updatedAt?`回答 ${escapeHtml(new Intl.DateTimeFormat('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(response.updatedAt)))}`:''}</small></div>
+        <div class="schedule-response-answers">${(poll.slots||[]).map(slot=>{
+          const answer=response.answers?.[slot.id]||{},status=answer.status||'';
+          return `<div class="schedule-response-answer">
+            <span class="schedule-response-date">${escapeHtml(dateLabel(slot.date,false))}<strong>${escapeHtml(slot.time)}</strong></span>
+            <span class="schedule-response-status status-${status||'empty'}"><b>${scheduleStatusLabel(status)}</b>${escapeHtml(scheduleStatusText(status))}</span>
+            ${answer.comment?`<span class="schedule-response-comment">💬 ${escapeHtml(answer.comment)}</span>`:''}
+          </div>`;
+        }).join('')}</div>
+      </article>`).join('');
+    }
     function renderScheduleNotifications() {
       const wrap=document.getElementById('persistentNotifications');if(!wrap)return;
       const userKey=scheduleUserKey();
@@ -1937,7 +1950,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
           </tr>`;}).join('')}
         </tbody></table></div>
         <div class="schedule-card-footer"><div class="schedule-legend">〇 参加可能　× 参加不可　△ 条件付き</div><button class="btn primary schedule-save-response" type="button">回答を保存</button></div>
-        ${responseCount?`<details class="schedule-response-details"><summary>みんなの回答を見る（${responseCount}名）</summary><div class="schedule-response-list">${Object.values(poll.responses||{}).map(response=>`<div><strong>${escapeHtml(response.name||'スタッフ')}</strong><span>${(poll.slots||[]).map(slot=>scheduleStatusLabel(response.answers?.[slot.id]?.status)).join(' ')}</span></div>`).join('')}</div></details>`:''}
+        ${responseCount?`<details class="schedule-response-details"><summary>みんなの回答を見る（${responseCount}名）</summary><div class="schedule-response-list">${scheduleResponseDetailsHtml(poll)}</div></details>`:''}
       </article>`;
     }
     function renderSchedulePolls() {
@@ -2512,7 +2525,9 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         if(missing){showToast('すべての候補に回答してください');return;}
         if(missingComment){showToast('△の候補には条件コメントを入力してください');return;}
         poll.responses={...(poll.responses||{}),[userKey]:{name:scheduleUserName(),answers,updatedAt:new Date().toISOString()}};
-        saveState('回答を保存しました。通知を完了にしました');return;
+        saveState('回答を保存しました。通知を完了にしました');
+        document.querySelector(`[data-schedule-poll="${poll.id}"] .schedule-response-details`)?.setAttribute('open','');
+        return;
       }
       const scheduleEdit=e.target.closest('.schedule-poll-edit');
       if(scheduleEdit){const poll=state.schedulePolls.find(item=>item.id===scheduleEdit.closest('[data-schedule-poll]')?.dataset.schedulePoll);if(poll)openSchedulePollDialog(poll);return;}
