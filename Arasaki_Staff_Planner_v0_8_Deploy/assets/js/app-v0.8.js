@@ -306,17 +306,18 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         taskTypes: [
           ...typed('企画',['企画立案','タイムスケジュール作成','カンペ作成','MTG']),
           ...typed('人事',['募集','面談','育成']),
-          ...typed('総務',['周知','出欠確認','リマインド','日程調整']),
+          ...typed('総務',['周知','連絡','出欠確認','リマインド','日程調整']),
           ...typed('情報システム',['Discord管理','Notion管理','ツール管理']),
           ...typed('ワールド制作',['モデリング','ギミック','ライト・演出','動作確認','修正']),
           ...typed('小物制作',['モデリング','ギミック','提出','実装']),
           ...typed('SNS・広報',['告知文','ポスター作製','投稿','イベントカレンダー']),
-          ...typed('品質確認',['動作確認','修正依頼','最終確認'])
+          ...typed('品質確認',['動作確認','修正依頼','最終確認']),
+          {value:'common__other',label:'その他',category:''}
         ],
         eventTypes: pair(['定期イベント','特別イベント','MTG']),
         taskStatuses: [{value:'inbox',label:'Inbox'},{value:'todo',label:'未着手'},{value:'doing',label:'進行中'},{value:'review',label:'確認待ち'},{value:'waiting',label:'待機中'},{value:'hold',label:'保留'},{value:'done',label:'完了',protected:true}],
         priorities: [{value:'high',label:'高'},{value:'medium',label:'中'},{value:'low',label:'低'}],
-        taskGroups: pair(['準備','制作','確認','当日','保留']),
+        taskGroups: [],
         importanceLevels: [{value:'A',label:'A（高）',protected:true},{value:'B',label:'B（中）',protected:true},{value:'C',label:'C（低）',protected:true}],
         urgencyLevels: [{value:'1',label:'1（高）',protected:true},{value:'2',label:'2（中）',protected:true},{value:'3',label:'3（低）',protected:true}],
         projectStatuses: [{value:'planning',label:'計画中'},{value:'active',label:'進行中'},{value:'review',label:'確認中'},{value:'waiting',label:'待機中'},{value:'completed',label:'完了'},{value:'archived',label:'保管'}],
@@ -325,7 +326,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     }
     const settingNames = {
       categories:'カテゴリ', taskTypes:'タスクの種類', eventTypes:'イベントの種類', taskStatuses:'タスクの状態',
-      taskGroups:'タスクグループ', importanceLevels:'重要度（3段階・名称変更可）', urgencyLevels:'緊急度（3段階・名称変更可）', projectStatuses:'プロジェクト状態',
+      importanceLevels:'重要度（3段階・名称変更可）', urgencyLevels:'緊急度（3段階・名称変更可）', projectStatuses:'プロジェクト状態',
       noteTypes:'ノートの種類'
     };
     function normalizeSettings(settings) {
@@ -1077,11 +1078,15 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     function eventCardHtml(event, compact=false) {
       const shownDate=event._occurrenceDate||event.date;
       const timeText=event.allDay!==false ? '終日' : (event.time||'時間未定');
-      return `<article class="event-card" data-kind="event" data-id="${event.id}" data-occurrence-date="${shownDate||''}">
-        <div class="event-top"><div><div class="event-title">☆ ${escapeHtml(event.title)}</div><div class="event-date">${escapeHtml(dateLabel(shownDate))}・${escapeHtml(timeText)}</div>
+      const own=!event.privateOwnerUid||event.privateOwnerUid===(window.currentStaffUser?.uid||'');
+      const hidden=!!event.isPrivate&&!own;
+      const title=hidden?'予定あり':event.title;
+      const typeClass=`event-type-${Math.abs([...String(event.type||'')].reduce((sum,char)=>sum+char.charCodeAt(0),0))%6}`;
+      return `<article class="event-card ${typeClass} ${hidden?'private-event':''}" data-kind="event" data-id="${event.id}" data-occurrence-date="${shownDate||''}">
+        <div class="event-top"><div><div class="event-title">${hidden?'🔒':'☆'} ${escapeHtml(title)}</div><div class="event-date">${escapeHtml(dateLabel(shownDate))}・${escapeHtml(timeText)}</div>
         <div class="meta-row"><span class="tag event-tag">${escapeHtml(settingLabel('eventTypes',event.type,event.type||'イベント'))}</span><span class="tag">${categoryIcons[event.category]||'•'} ${escapeHtml(settingLabel('categories',event.category,event.category||'未分類'))}</span>${hasRepeat(event)?`<span class="tag repeat-badge">↻ ${escapeHtml(repeatSummary(event))}</span>`:''}</div></div>
-        <div class="card-actions"><button class="icon-btn event-edit" title="編集">✎</button><button class="icon-btn event-delete" title="削除">⌫</button></div></div>
-        ${!compact&&event.note?`<div class="event-note">${nl2br(event.note)}</div>`:''}
+        <div class="card-actions">${own?'<button class="icon-btn event-edit" title="編集">✎</button><button class="icon-btn event-delete" title="削除">⌫</button>':''}</div></div>
+        ${!hidden&&!compact&&event.note?`<div class="event-note">${nl2br(event.note)}</div>`:''}
       </article>`;
     }
 
@@ -1091,8 +1096,12 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
 
     function meetingCardHtml(m, compact=false) {
       const pName = projectName(m.projectId);
+      const userKey=window.currentStaffUser?.uid||window.currentStaffUser?.email||window.currentStaffUser?.name||'';
+      const response=m.responses?.[userKey];
+      const responseLabel=response?.status==='yes'?'参加':response?.status==='no'?'不参加':response?.status==='maybe'?'保留':'未回答';
       return `<article class="meeting-card" data-kind="meeting" data-id="${m.id}">
         <div class="meeting-top"><div><div class="meeting-title">${escapeHtml(m.title)}</div><div class="meeting-time">${escapeHtml(dateLabel(m.date))}${m.time?` ${escapeHtml(m.time)}`:''}</div><div class="meta-row"><span class="tag">${categoryIcons[m.category]||'•'} ${escapeHtml(settingLabel('categories',m.category,m.category||''))}</span>${pName?`<span class="tag">◇ ${escapeHtml(pName)}</span>`:''}${m.attendees?`<span class="tag">参加：${escapeHtml(m.attendees)}</span>`:''}</div></div><div class="card-actions"><button class="icon-btn meeting-edit">✎</button><button class="icon-btn meeting-delete">⌫</button></div></div>
+        <div class="meeting-rsvp" data-meeting-rsvp="${m.id}"><span class="tag">あなたの回答：${responseLabel}${response?.comment?`・${escapeHtml(response.comment)}`:''}</span><button class="btn small meeting-rsvp-btn" data-rsvp="yes">〇 参加</button><button class="btn small meeting-rsvp-btn" data-rsvp="no">× 不参加</button><button class="btn small meeting-rsvp-btn" data-rsvp="maybe">△ コメント</button></div>
         ${!compact && (m.agenda||m.decisions||m.pending||m.nextActions)?`<div class="meeting-body">
           ${m.agenda?`<div class="meeting-block"><strong>議題</strong><div>${nl2br(m.agenda)}</div></div>`:''}
           ${m.decisions?`<div class="meeting-block"><strong>決定事項</strong><div>${nl2br(m.decisions)}</div></div>`:''}
@@ -1278,22 +1287,33 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const pName=projectName(task.projectId);
       return `<article class="workflow-deadline-card" data-workflow-task="${task.id}"><div><div class="workflow-deadline-title">${escapeHtml(task.title)}</div><div class="meta-row"><span class="tag">${categoryIcons[task.category]||'•'} ${escapeHtml(settingLabel('categories',task.category,task.category||'未分類'))}</span><span class="tag">重要 ${escapeHtml(settingLabel('importanceLevels',task.importance,task.importance))}</span><span class="tag">緊急 ${escapeHtml(settingLabel('urgencyLevels',task.urgency,task.urgency))}</span>${pName?`<span class="tag">◇ ${escapeHtml(pName)}</span>`:''}</div>${task.note?`<div class="task-note">${nl2br(task.note)}</div>`:''}</div><div class="workflow-deadline-actions"><div class="field"><label>期限</label><input class="workflow-due-input" type="date" /></div><button class="btn small primary workflow-save-due" type="button">期限を保存</button><button class="btn small workflow-future-btn workflow-move-future" type="button">Future Logへ</button></div></article>`;
     }
+    function workflowAssigneeCardHtml(task) {
+      return `<article class="workflow-deadline-card" data-workflow-task="${task.id}"><div><div class="workflow-deadline-title">${escapeHtml(task.title)}</div><div class="meta-row"><span class="tag">${escapeHtml(dateLabel(task.due,false))}</span><span class="tag">重要 ${escapeHtml(settingLabel('importanceLevels',task.importance,task.importance))}</span><span class="tag">緊急 ${escapeHtml(settingLabel('urgencyLevels',task.urgency,task.urgency))}</span></div></div><div class="workflow-deadline-actions"><div class="field"><label>担当者</label><select class="workflow-assignee-select"><option value="">未設定</option></select></div><button class="btn small primary workflow-save-assignee" type="button">担当者を保存</button></div></article>`;
+    }
 
     function renderTaskWorkflow() {
       const openTasks=visibleTasks().filter(task=>!isDone(task));
       const unassigned=openTasks.filter(task=>!task.importance||!task.urgency);
       const sorted=openTasks.filter(task=>task.importance&&task.urgency);
       const awaitingDue=sorted.filter(task=>!task.due).sort((a,b)=>{const ir={A:0,B:1,C:2},ur={'1':0,'2':1,'3':2};return (ir[a.importance]??9)-(ir[b.importance]??9)||(ur[a.urgency]??9)-(ur[b.urgency]??9)||(a.createdAt||'').localeCompare(b.createdAt||'');});
+      const awaitingAssignee=sorted.filter(task=>task.due&&!task.assigneeUid&&!task.assignee);
       const setText=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=String(value);};
       setText('workflowCaptureCount',unassigned.length);
       setText('workflowTriageCount',sorted.length);
       setText('workflowDeadlineCount',awaitingDue.length);
-      setText('workflowFutureCount',state.futureItems.length);
+      setText('workflowAssigneeCount',awaitingAssignee.length);
       setText('workflowDeadlineSummary',`${awaitingDue.length}件`);
+      setText('workflowAssigneeSummary',`${awaitingAssignee.length}件`);
       const status=document.getElementById('workflowStatusLine');
       if(status) status.innerHTML=`<span class="tag">洗い出し・未仕分け ${unassigned.length}件</span><span class="tag">仕分け済み ${sorted.length}件</span><span class="tag">期限待ち ${awaitingDue.length}件</span><span class="tag">Future Log ${state.futureItems.length}件</span>`;
       const list=document.getElementById('workflowDeadlineList');
       if(list) list.innerHTML=awaitingDue.length?awaitingDue.map(workflowDeadlineCardHtml).join(''):'<div class="workflow-complete-box"><strong>期限待ちのタスクはありません。</strong><br>仕分けが終わったタスクへ期限を付けると、通常のタスク一覧・カレンダー・Weekly Logへ反映されます。</div>';
+      const assigneeList=document.getElementById('workflowAssigneeList');
+      if(assigneeList){
+        assigneeList.innerHTML=awaitingAssignee.length?awaitingAssignee.map(workflowAssigneeCardHtml).join(''):'<div class="workflow-complete-box"><strong>担当者待ちのタスクはありません。</strong></div>';
+        const source=document.getElementById('taskAssignee');
+        assigneeList.querySelectorAll('.workflow-assignee-select').forEach(select=>{if(source)select.innerHTML=source.innerHTML;});
+      }
       refreshProjectSelects();
     }
 
@@ -1388,8 +1408,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
             <div class="day-number"><span>${d.getDate()}</span>${holiday?`<span class="holiday-name" title="${escapeHtml(holiday)}">${escapeHtml(holiday)}</span>`:''}</div><div class="day-events">
             ${holiday?`<div class="cal-item holiday">㊗ ${escapeHtml(holiday)}</div>`:''}
             ${tasks.slice(0,2).map(t=>`<div class="cal-item">${escapeHtml(t.title)}</div>`).join('')}
-            ${meetings.slice(0,1).map(m=>`<div class="cal-item meeting">${escapeHtml(m.title)}</div>`).join('')}
-            ${events.slice(0,1).map(ev=>`<div class="cal-item event">☆ ${escapeHtml(ev.title)}</div>`).join('')}
+            ${meetings.slice(0,1).map(m=>`<div class="cal-item meeting">MTG ${escapeHtml(m.title)}</div>`).join('')}
+            ${events.slice(0,1).map(ev=>{const hidden=ev.isPrivate&&ev.privateOwnerUid&&ev.privateOwnerUid!==(window.currentStaffUser?.uid||'');return `<div class="cal-item event event-type-${Math.abs([...String(ev.type||'')].reduce((sum,char)=>sum+char.charCodeAt(0),0))%6}">${hidden?'🔒 予定あり':`☆ ${escapeHtml(ev.title)}`}</div>`;}).join('')}
             ${datedFuture.slice(0,1).map(item=>`<div class="cal-item future">◫ ${escapeHtml(item.title)}</div>`).join('')}
             </div><div class="cal-dots">${holiday?'<span class="dot holiday"></span>':''}${tasks.length?'<span class="dot"></span>':''}${meetings.length?'<span class="dot" style="background:var(--cyan)"></span>':''}${events.length?'<span class="dot event"></span>':''}${datedFuture.length?'<span class="dot future"></span>':''}</div>
           </div>`;
@@ -1450,13 +1470,13 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       set('taskStatus', settingOptions('taskStatuses'));
       set('priorityFilter', `<option value="all">すべて</option>${settingOptions('priorities')}`);
       set('taskPriority', settingOptions('priorities'));
-      set('taskGroup', settingOptions('taskGroups','',true,'なし'));
       set('taskImportance', settingOptions('importanceLevels','',true,'未設定'));
       set('taskUrgency', settingOptions('urgencyLevels','',true,'未設定'));
       set('importanceFilter', `<option value="all">すべて</option><option value="unset">未設定</option>${settingOptions('importanceLevels')}`);
       set('urgencyFilter', `<option value="all">すべて</option><option value="unset">未設定</option>${settingOptions('urgencyLevels')}`);
       set('triageCategoryFilter', `<option value="all">すべてのカテゴリ</option>${settingOptions('categories')}`);
       set('captureTaskCategory', settingOptions('categories'));
+      set('captureTaskType', taskTypeOptionsForCategory(document.getElementById('captureTaskCategory')?.value||categories[0],document.getElementById('captureTaskType')?.value||''));
       refreshCaptureTaskAudience(document.getElementById('captureTaskAudience')?.value||defaultTaskAudienceForRole());
       set('projectStatusFilter', `<option value="all">すべて</option>${settingOptions('projectStatuses')}`);
       set('projectStatus', settingOptions('projectStatuses'));
@@ -1878,6 +1898,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       document.getElementById('eventDate').value=event?.date||preset.date||localDateString();
       document.getElementById('eventTime').value=event?.time||'';
       document.getElementById('eventAllDay').checked=event?.allDay!==false && !event?.time;
+      document.getElementById('eventPrivate').checked=!!event?.isPrivate;
       document.getElementById('eventTime').disabled=false;
       document.getElementById('eventRepeatType').value=event?.repeatType||preset.repeatType||'none';
       document.getElementById('eventRepeatInterval').value=Math.max(1,Number(event?.repeatInterval)||1);
@@ -1954,7 +1975,6 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const selectedDays=Array.isArray(task?.repeatWeekdays)?task.repeatWeekdays.map(Number):[];
       document.querySelectorAll('#taskRepeatWeekdays input').forEach(input=>input.checked=selectedDays.includes(Number(input.value)));
       document.getElementById('taskProject').value = task?.projectId||preset.projectId||'';
-      document.getElementById('taskGroup').value = task?.group||'';
       refreshTaskAudienceSelect(taskAudienceOf(task||{audience:preset.audience||((TASK_VIEW_AUDIENCE[currentView]&&TASK_VIEW_AUDIENCE[currentView]!=='all')?TASK_VIEW_AUDIENCE[currentView]:defaultTaskAudienceForRole())}));
       window.populateStaffSelects?.(task?.assigneeUid||preset.assigneeUid||'',task?.assignee||preset.assignee||'',task?.reviewerUid||preset.reviewerUid||'',task?.reviewer||preset.reviewer||'');
       document.getElementById('taskImportance').value = task?.importance||preset.importance||'';
@@ -2006,8 +2026,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       e.preventDefault();
       const title=document.getElementById('captureTaskTitle').value.trim();if(!title)return;
       const category=document.getElementById('captureTaskCategory').value||categories[0];
-      const defaultType=firstTaskTypeForCategory(category);
-      state.tasks.push({id:uid('task'),title,category,type:defaultType,audience:normalizeTaskAudience(document.getElementById('captureTaskAudience')?.value||defaultTaskAudienceForRole()),status:'inbox',completed:false,priority:settingItems('priorities')[1]?.value||settingItems('priorities')[0]?.value||'medium',due:'',projectId:document.getElementById('captureTaskProject').value||'',group:'',assigneeUid:'',assignee:'',reviewerUid:'',reviewer:'',importance:'',urgency:'',level:'',note:document.getElementById('captureTaskNote').value.trim(),repeatType:'none',repeatInterval:1,repeatWeekdays:[],repeatUntil:'',repeatStart:'',repeatHistory:[],...currentCreatorFields(),createdAt:new Date().toISOString()});
+      const selectedType=document.getElementById('captureTaskType').value||firstTaskTypeForCategory(category);
+      state.tasks.push({id:uid('task'),title,category,type:selectedType,audience:normalizeTaskAudience(document.getElementById('captureTaskAudience')?.value||defaultTaskAudienceForRole()),status:'inbox',completed:false,priority:settingItems('priorities')[1]?.value||settingItems('priorities')[0]?.value||'medium',due:'',projectId:document.getElementById('captureTaskProject').value||'',group:'',assigneeUid:'',assignee:'',reviewerUid:'',reviewer:'',importance:'',urgency:'',level:'',note:document.getElementById('captureTaskNote').value.trim(),repeatType:'none',repeatInterval:1,repeatWeekdays:[],repeatUntil:'',repeatStart:'',repeatHistory:[],...currentCreatorFields(),createdAt:new Date().toISOString()});
       document.getElementById('captureTaskTitle').value='';document.getElementById('captureTaskNote').value='';
       saveState('洗い出しタスクへ追加しました');
       setTimeout(()=>document.getElementById('captureTaskTitle').focus(),40);
@@ -2037,6 +2057,13 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       state.dailyEntries[date]={ ...(state.dailyEntries[date]||{}), goal:document.getElementById('todayGoal').value.trim(), goodThings:document.getElementById('goodThings').value.trim(), updatedAt:new Date().toISOString() };
       saveState('今日のページを保存しました');
     });
+    document.getElementById('moveTodayTasksBtn').addEventListener('click',()=>{
+      const today=localDateString(),tomorrow=localDateString(addDays(parseLocalDate(today),1));
+      const targets=visibleTasks().filter(task=>!isDone(task)&&task.due===today&&!hasRepeat(task));
+      if(!targets.length){showToast('翌日へ送る今日のタスクはありません');return;}
+      if(!confirm(`今日の未完了タスク ${targets.length}件を翌日へ送りますか？`))return;
+      targets.forEach(task=>{task.due=tomorrow;task.updatedAt=new Date().toISOString();});saveState(`${targets.length}件を翌日へ送りました`);
+    });
 
     document.getElementById('eventForm').addEventListener('submit',e=>{
       e.preventDefault();
@@ -2051,7 +2078,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       if(repeatUntil&&rawDate&&repeatUntil<rawDate){showToast('終了日は最初の日付以降にしてください');return;}
       const eventTime=document.getElementById('eventTime').value;
       const eventAllDay=eventTime ? false : document.getElementById('eventAllDay').checked;
-      const event={id:id||uid('event'),title:document.getElementById('eventTitle').value.trim(),category:document.getElementById('eventCategory').value,type:document.getElementById('eventType').value,date:rawDate,time:eventTime,allDay:eventAllDay,note:document.getElementById('eventNote').value.trim(),repeatType,repeatInterval,repeatWeekdays,repeatUntil,repeatStart:rawDate,createdAt:existing?.createdAt||new Date().toISOString()};
+      const event={id:id||uid('event'),title:document.getElementById('eventTitle').value.trim(),category:document.getElementById('eventCategory').value,type:document.getElementById('eventType').value,date:rawDate,time:eventTime,allDay:eventAllDay,note:document.getElementById('eventNote').value.trim(),isPrivate:document.getElementById('eventPrivate').checked,privateOwnerUid:existing?.privateOwnerUid||window.currentStaffUser?.uid||'',repeatType,repeatInterval,repeatWeekdays,repeatUntil,repeatStart:rawDate,createdAt:existing?.createdAt||new Date().toISOString()};
       if(!event.title||!event.date)return;
       if(hasRepeat(event)){
         const normalizedDate=firstRepeatDateOnOrAfter(event,event.date);
@@ -2090,7 +2117,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const assigneeSelection=window.getStaffSelection?.('taskAssignee')||{uid:'',name:''};
       const reviewerSelection=window.getStaffSelection?.('taskReviewer')||{uid:'',name:''};
       const creator=currentCreatorFields();
-      const task={ id:id||uid('task'), title:document.getElementById('taskTitle').value.trim(), category:document.getElementById('taskCategory').value, type:document.getElementById('taskType').value, audience:normalizeTaskAudience(document.getElementById('taskAudience').value), status, completed:status==='done', priority:document.getElementById('taskPriority').value, due:rawDue, projectId:document.getElementById('taskProject').value, group:document.getElementById('taskGroup').value, assigneeUid:assigneeSelection.uid, assignee:assigneeSelection.name, reviewerUid:reviewerSelection.uid, reviewer:reviewerSelection.name, importance:document.getElementById('taskImportance').value, urgency:document.getElementById('taskUrgency').value, level:'', note:document.getElementById('taskNote').value.trim(),
+      const task={ id:id||uid('task'), title:document.getElementById('taskTitle').value.trim(), category:document.getElementById('taskCategory').value, type:document.getElementById('taskType').value, audience:normalizeTaskAudience(document.getElementById('taskAudience').value), status, completed:status==='done', priority:document.getElementById('taskPriority').value, due:rawDue, projectId:document.getElementById('taskProject').value, group:'', assigneeUid:assigneeSelection.uid, assignee:assigneeSelection.name, reviewerUid:reviewerSelection.uid, reviewer:reviewerSelection.name, importance:document.getElementById('taskImportance').value, urgency:document.getElementById('taskUrgency').value, level:'', note:document.getElementById('taskNote').value.trim(),
         repeatType, repeatInterval, repeatWeekdays, repeatUntil,
         repeatStart:repeatType==='none'?'':(resetSeries?rawDue:(existing?.repeatStart||rawDue)),
         repeatHistory:repeatType==='none'?[]:(resetSeries?[]:[...(existing?.repeatHistory||[])]),
@@ -2116,7 +2143,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
 
     document.getElementById('meetingForm').addEventListener('submit',e=>{
       e.preventDefault(); const id=document.getElementById('meetingId').value; const existing=state.meetings.find(m=>m.id===id);
-      const m={ id:id||uid('meeting'), title:document.getElementById('meetingTitle').value.trim(), category:document.getElementById('meetingCategory').value, projectId:document.getElementById('meetingProject').value, date:document.getElementById('meetingDate').value, time:document.getElementById('meetingTime').value, attendees:document.getElementById('meetingAttendees').value.trim(), agenda:document.getElementById('meetingAgenda').value.trim(), decisions:document.getElementById('meetingDecisions').value.trim(), pending:document.getElementById('meetingPending').value.trim(), nextActions:document.getElementById('meetingNextActions').value.trim(), createdAt:existing?.createdAt||new Date().toISOString() };
+      const m={ id:id||uid('meeting'), title:document.getElementById('meetingTitle').value.trim(), category:document.getElementById('meetingCategory').value, projectId:document.getElementById('meetingProject').value, date:document.getElementById('meetingDate').value, time:document.getElementById('meetingTime').value, attendees:document.getElementById('meetingAttendees').value.trim(), responses:{...(existing?.responses||{})}, agenda:document.getElementById('meetingAgenda').value.trim(), decisions:document.getElementById('meetingDecisions').value.trim(), pending:document.getElementById('meetingPending').value.trim(), nextActions:document.getElementById('meetingNextActions').value.trim(), createdAt:existing?.createdAt||new Date().toISOString() };
       if(!m.title||!m.date)return; if(existing)Object.assign(existing,m); else state.meetings.push(m);
       document.getElementById('meetingDialog').close(); saveState(existing?'ミーティングを更新しました':'ミーティングを追加しました');
     });
@@ -2302,6 +2329,21 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         const today=new Date();
         openFutureDialog(null,{sourceTaskId:task.id,title:task.title,category:task.category,note:task.note||'',year:today.getFullYear(),month:today.getMonth()+1});return;
       }
+      const saveAssignee=e.target.closest('.workflow-save-assignee');
+      if(saveAssignee){
+        const row=saveAssignee.closest('[data-workflow-task]');const task=state.tasks.find(item=>item.id===row?.dataset.workflowTask);const select=row?.querySelector('.workflow-assignee-select');
+        if(!task||!select?.value){showToast('担当者を選んでください');return;}
+        task.assigneeUid=select.value;task.assignee=select.options[select.selectedIndex]?.textContent||'';saveState('担当者を設定しました');return;
+      }
+      const rsvp=e.target.closest('.meeting-rsvp-btn');
+      if(rsvp){
+        const meetingId=rsvp.closest('[data-meeting-rsvp]')?.dataset.meetingRsvp;const meeting=state.meetings.find(item=>item.id===meetingId);
+        const userKey=window.currentStaffUser?.uid||window.currentStaffUser?.email||window.currentStaffUser?.name||'';
+        if(!meeting||!userKey){showToast('出欠回答にはログインが必要です');return;}
+        let comment='';if(rsvp.dataset.rsvp==='maybe'){comment=prompt('コメントを入力してください（例：少し遅れて参加）')||'';if(!comment)return;}
+        meeting.responses={...(meeting.responses||{}),[userKey]:{status:rsvp.dataset.rsvp,comment,name:window.currentStaffUser?.name||window.currentStaffUser?.email||'',updatedAt:new Date().toISOString()}};
+        saveState('ミーティングの出欠を回答しました');return;
+      }
       const card=e.target.closest('[data-kind][data-id]'); if(!card)return;
       const {kind,id}=card.dataset;
       if(kind==='event'){
@@ -2438,6 +2480,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     document.getElementById('taskDue').addEventListener('change',()=>updateTaskRepeatUI(true));
 
     document.getElementById('taskCategory').addEventListener('change',e=>refreshTaskTypeSelect(e.target.value,''));
+    document.getElementById('captureTaskCategory').addEventListener('change',e=>{const select=document.getElementById('captureTaskType');select.innerHTML=taskTypeOptionsForCategory(e.target.value,'');select.value=firstTaskTypeForCategory(e.target.value);});
     document.getElementById('categoryFilter').addEventListener('change',()=>{refreshTaskTypeFilter();renderTasks();});
     ['taskSearch','statusFilter','priorityFilter','typeFilter','importanceFilter','urgencyFilter','sortFilter'].forEach(id=>document.getElementById(id).addEventListener(id==='taskSearch'?'input':'change',renderTasks));
     ['triageSearch','triageCategoryFilter','triageStatusFilter'].forEach(id=>document.getElementById(id).addEventListener(id==='triageSearch'?'input':'change',renderTaskTriage));

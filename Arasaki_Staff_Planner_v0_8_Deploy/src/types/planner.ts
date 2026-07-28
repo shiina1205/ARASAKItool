@@ -29,7 +29,18 @@ export interface PlannerEvent {
   allDay: boolean;
   time?: string;
   note?: string;
+  isPrivate?: boolean;
+  privateOwnerUid?: string;
   repeat?: RepeatRule;
+}
+
+export type MeetingAttendance = 'yes' | 'no' | 'maybe';
+
+export interface MeetingResponse {
+  status: MeetingAttendance;
+  comment?: string;
+  name?: string;
+  updatedAt: string;
 }
 
 export interface PlannerPreferences {

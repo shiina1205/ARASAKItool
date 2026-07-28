@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="light dark" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>荒嵜造船所 Staff Planner v0.8</title>
+  <title>Staff Planner｜荒嵜造船所</title>
   <link rel="stylesheet" href="./assets/css/app-v0.8.css" />
   <script type="module" src="./assets/js/theme-init-v0.8.js"></script>
 </head>
@@ -42,11 +42,11 @@
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">✦</div>
-        <div><h1>荒嵜造船所 Staff Planner</h1><p>企画・制作・運営をスタッフで共有</p></div>
+        <div><h1>Staff Planner</h1><p>荒嵜造船所のワークスペース</p></div>
       </div>
       <div id="sidebarNavContainer"></div>
       <button class="nav-button menu-settings-shortcut" data-view="settings"><span class="nav-icon">⚙</span>メニュー・設定</button>
-      <div class="side-note">Googleアカウントでログインし、荒嵜造船所スタッフ間で同じデータを共有します。外観は各スタッフが個別に変更できます。<br><span id="reactBootstrap"><span class="version-badge">React + TypeScript（読込中）</span></span></div>
+      <div class="side-note">変更内容は自動でクラウドに同期されます。外観とメニューは設定から変更できます。<br><span id="reactBootstrap"><span class="version-badge">システム読込中</span></span></div>
     </aside>
 
     <main class="main">
@@ -92,7 +92,7 @@
 
         <div class="dashboard-grid">
           <article class="panel">
-            <div class="panel-title-row"><div><h3>今日・近日のタスク</h3><div class="panel-sub">期限と優先度が近い順</div></div><button class="btn ghost small" data-open-view="tasks">すべて見る</button></div>
+            <div class="panel-title-row"><div><h3>今日・近日のタスク</h3><div class="panel-sub">期限と優先度が近い順</div></div><div class="inline-actions"><button class="btn small" id="moveTodayTasksBtn">今日のタスクを翌日へ</button><button class="btn ghost small" data-open-view="tasks">すべて見る</button></div></div>
             <div class="task-list" id="upcomingTasks"></div>
           </article>
           <div class="stack">
@@ -266,7 +266,7 @@
           <button class="workflow-step" type="button" data-workflow-target="workflowCaptureSection"><span class="workflow-step-number">STEP 01</span><strong>タスクを洗い出す</strong><small>思いついた作業を判断せずに全部入れる</small><span class="workflow-step-count" id="workflowCaptureCount">0</span></button>
           <button class="workflow-step" type="button" data-workflow-target="workflowTriageSection"><span class="workflow-step-number">STEP 02</span><strong>重要度・緊急度で仕分け</strong><small>右の未仕分け一覧から3×3の表へ移動</small><span class="workflow-step-count" id="workflowTriageCount">0</span></button>
           <button class="workflow-step" type="button" data-workflow-target="workflowDeadlineSection"><span class="workflow-step-number">STEP 03</span><strong>期限を決める</strong><small>仕分け後のタスクへ実行日を付ける</small><span class="workflow-step-count" id="workflowDeadlineCount">0</span></button>
-          <button class="workflow-step" type="button" data-workflow-view="future"><span class="workflow-step-number">STEP 04</span><strong>Future Logへ移す</strong><small>期限を決められない内容は月単位で保管</small><span class="workflow-step-count" id="workflowFutureCount">0</span></button>
+          <button class="workflow-step" type="button" data-workflow-target="workflowAssigneeSection"><span class="workflow-step-number">STEP 04</span><strong>担当者を振り分ける</strong><small>期限を決めたタスクへ担当者を設定</small><span class="workflow-step-count" id="workflowAssigneeCount">0</span></button>
         </div>
 
         <article class="panel workflow-capture-panel" id="workflowCaptureSection">
@@ -274,6 +274,7 @@
           <form id="taskCaptureForm" class="workflow-capture-grid">
             <div class="field"><label>タスク名</label><input id="captureTaskTitle" required placeholder="例：納涼祭の告知内容を考える" /></div>
             <div class="field"><label>カテゴリ</label><select id="captureTaskCategory"></select></div>
+            <div class="field"><label>種類</label><select id="captureTaskType"></select></div>
             <div class="field"><label>プロジェクト（任意）</label><select id="captureTaskProject"><option value="">紐づけなし</option></select></div>
             <div class="field"><label>表示先</label><select id="captureTaskAudience"><option value="staff">スタッフ用</option></select></div>
             <button class="btn primary workflow-capture-submit" type="submit">＋ 洗い出しに追加</button>
@@ -314,6 +315,10 @@
         <article class="panel workflow-deadline-panel" id="workflowDeadlineSection">
           <div class="panel-title-row"><div><div class="eyebrow">Step 03 · Schedule</div><h3>期限を決める</h3><div class="panel-sub">重要度・緊急度の仕分けが終わり、まだ期限がないタスクだけを表示します</div></div><span class="tag" id="workflowDeadlineSummary">0件</span></div>
           <div class="workflow-deadline-list" id="workflowDeadlineList"></div>
+        </article>
+        <article class="panel workflow-deadline-panel" id="workflowAssigneeSection">
+          <div class="panel-title-row"><div><div class="eyebrow">Step 04 · Assign</div><h3>担当者を振り分ける</h3><div class="panel-sub">仕分けと期限設定が済み、担当者が未設定のタスクを表示します</div></div><span class="tag" id="workflowAssigneeSummary">0件</span></div>
+          <div class="workflow-deadline-list" id="workflowAssigneeList"></div>
         </article>
       </section>
 
@@ -517,7 +522,6 @@
             <div class="repeat-help" id="taskRepeatHelp">完了にすると、次回の日付へ自動で進みます。カレンダーとWeekly Logには、その期間内の繰り返し予定も表示されます。</div>
           </div>
           <div class="field"><label>プロジェクト</label><select id="taskProject"><option value="">紐づけなし</option></select></div>
-          <div class="field"><label>タスクグループ</label><select id="taskGroup"><option value="">なし</option></select></div>
           <div class="field"><label>表示するタスク一覧</label><select id="taskAudience"><option value="staff">スタッフ用タスク一覧</option></select></div>
           <div class="field"><label>担当者</label><select id="taskAssignee"><option value="">未設定</option></select></div>
           <div class="field"><label>確認担当</label><select id="taskReviewer"><option value="">未設定</option></select></div>
@@ -564,7 +568,7 @@
           <div class="field"><label>プロジェクト</label><select id="meetingProject"><option value="">紐づけなし</option></select></div>
           <div class="field"><label>日付</label><input type="date" id="meetingDate" required /></div>
           <div class="field"><label>時間</label><input type="time" id="meetingTime" /></div>
-          <div class="field span-2"><label>参加者</label><input id="meetingAttendees" placeholder="名前をカンマ区切りで入力" /></div>
+          <div class="field span-2"><label>参加者（個別に出欠依頼）</label><input id="meetingAttendees" placeholder="スタッフ名をカンマ区切りで入力" /><div class="panel-sub">対象者の画面に参加・不参加・コメント付き保留の回答欄が表示されます。</div></div>
           <div class="field span-2"><label>議題</label><textarea id="meetingAgenda"></textarea></div>
           <div class="field span-2"><label>決定事項</label><textarea id="meetingDecisions"></textarea></div>
           <div class="field span-2"><label>保留・確認事項</label><textarea id="meetingPending"></textarea></div>
@@ -606,6 +610,7 @@
           <div class="field"><label>日付／最初の開催日</label><input type="date" id="eventDate" required /></div>
           <div class="field"><label>時間（任意）</label><input type="time" id="eventTime" /><div class="panel-sub">時間を入力すると「終日イベント」は自動で解除されます。</div></div>
           <div class="field"><label>表示</label><div class="all-day-row"><input type="checkbox" id="eventAllDay" checked /><span class="muted">終日イベント</span></div></div>
+          <div class="field span-2"><label>個人の予定</label><div class="all-day-row"><input type="checkbox" id="eventPrivate" /><span class="muted">ほかのスタッフには詳細を隠して「予定あり」と表示する</span></div></div>
           <div class="field"><label>繰り返し</label><select id="eventRepeatType"><option value="none">繰り返しなし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option><option value="yearly">毎年</option></select></div>
           <div class="field span-2 repeat-panel" id="eventRepeatPanel" hidden>
             <div class="repeat-grid">
