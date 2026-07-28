@@ -111,6 +111,11 @@
             ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
             "$id": { ".validate": "!newData.exists() || (newData.child('id').val() === $id && newData.child('title').isString())" }
           },
+          "schedulePolls": {
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            "$id": { ".validate": "!newData.exists() || (newData.child('id').val() === $id && newData.child('title').isString() && newData.child('slots').hasChildren())" }
+          },
           "notes": {
             ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
             ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",

@@ -363,6 +363,19 @@
         </article>
       </section>
 
+      <section class="view" id="schedulePollsView">
+        <div class="schedule-page-head">
+          <div>
+            <div class="eyebrow">Schedule Coordination</div>
+            <h3>みんなの日程を合わせる</h3>
+            <p class="panel-sub">候補ごとに 〇・×・△ を入力。△には条件や到着時間をコメントできます。</p>
+          </div>
+          <button class="btn primary" id="newSchedulePollBtn">＋ 日程調整を作成</button>
+        </div>
+        <div class="schedule-summary" id="schedulePollSummary"></div>
+        <div class="schedule-poll-list" id="schedulePollList"></div>
+      </section>
+
       <section class="view" id="notesView">
         <article class="panel">
           <div class="panel-title-row"><div><h3>アイデア・ノート</h3><div class="panel-sub">Idea Map・Note・Fileの入口として使えます</div></div><button class="btn primary small" id="newNoteBtn">＋ ノート追加</button></div>
@@ -499,8 +512,8 @@
           <div class="field span-2"><label>タスク名</label><input id="taskTitle" required placeholder="何をする？" /></div>
           <div class="field"><label>カテゴリ</label><select id="taskCategory"><option>PRIVATE</option><option>WORK</option><option>LIFE</option><option>VRchat</option></select></div>
           <div class="field"><label>種類</label><select id="taskType"><option value="PRIVATE__1">コンタクト交換</option><option value="PRIVATE__2">買い物</option></select></div>
-          <div class="field"><label>状態</label><select id="taskStatus"><option value="inbox">Inbox</option><option value="todo">未着手</option><option value="doing">進行中</option><option value="waiting">待機中</option><option value="done">完了</option></select></div>
-          <div class="field"><label>優先度</label><select id="taskPriority"><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></div>
+          <div class="field"><label>状態</label><select id="taskStatus"><option value="">未選択</option><option value="todo">未着手</option><option value="doing">進行中</option><option value="waiting">待機中</option><option value="done">完了</option></select></div>
+          <div class="field"><label>優先度（自動算出）</label><output id="taskPriorityDisplay" class="calculated-priority">未選択</output><input type="hidden" id="taskPriority" value="" /></div>
           <div class="field"><label>期限／最初の実行日</label><input type="date" id="taskDue" /></div>
           <div class="field"><label>繰り返し</label><select id="taskRepeatType"><option value="none">繰り返しなし</option><option value="daily">毎日</option><option value="weekly">毎週</option><option value="monthly">毎月</option><option value="yearly">毎年</option></select></div>
           <div class="field span-2 repeat-panel" id="taskRepeatPanel" hidden>
@@ -525,8 +538,16 @@
           <div class="field"><label>表示するタスク一覧</label><select id="taskAudience"><option value="staff">スタッフ用タスク一覧</option></select></div>
           <div class="field"><label>担当者</label><select id="taskAssignee"><option value="">未設定</option></select></div>
           <div class="field"><label>確認担当</label><select id="taskReviewer"><option value="">未設定</option></select></div>
-          <div class="field"><label>重要度</label><select id="taskImportance"><option value="">未設定</option></select></div>
-          <div class="field"><label>緊急度</label><select id="taskUrgency"><option value="">未設定</option></select></div>
+          <div class="field"><label>重要度</label><select id="taskImportance"><option value="">未選択</option></select></div>
+          <div class="field"><label>緊急度</label><select id="taskUrgency"><option value="">未選択</option></select></div>
+          <details class="priority-guide span-2">
+            <summary>優先度の算出一覧を見る</summary>
+            <div class="priority-guide-grid">
+              <div><strong>算出結果</strong><span>緊急度1 × 重要度A / B / C → 1A / 1B / 1C</span><span>緊急度2 × 重要度A / B / C → 2A / 2B / 2C</span><span>緊急度3 × 重要度A / B / C → 3A / 3B / 3C</span></div>
+              <div><strong>緊急度</strong><span>1：何よりも早めに終わらせたい</span><span>2：1が終わり次第終わらせたい</span><span>3：2が終わり次第終わらせたい</span></div>
+              <div><strong>重要度</strong><span>A：何よりも重要</span><span>B：Aの次に重要</span><span>C：Bの次に重要</span></div>
+            </div>
+          </details>
           <div class="field span-2"><label>メモ</label><textarea id="taskNote" placeholder="補足、リンク、次の一歩など"></textarea></div>
         </div>
         <div class="form-error" id="taskFormError" role="alert" hidden></div>
@@ -578,6 +599,28 @@
       </div>
     </form>
   </dialog>
+
+  <dialog id="schedulePollDialog">
+    <form method="dialog" id="schedulePollForm">
+      <div class="modal-body schedule-modal-body">
+        <div class="modal-head"><div><div class="eyebrow">New Coordination</div><h3 id="schedulePollModalTitle">日程調整を作成</h3></div><button class="icon-btn" type="button" data-close-dialog="schedulePollDialog">✕</button></div>
+        <input type="hidden" id="schedulePollId" />
+        <div class="modal-grid">
+          <div class="field span-2"><label>タイトル</label><input id="schedulePollTitle" required maxlength="100" placeholder="例：8月スタッフ定例会" /></div>
+          <div class="field span-2"><label>説明（任意）</label><textarea id="schedulePollDescription" placeholder="相談したい内容や、所要時間など"></textarea></div>
+          <div class="field"><label>候補期間の開始日</label><input type="date" id="schedulePollStart" required /></div>
+          <div class="field"><label>候補期間の終了日</label><input type="date" id="schedulePollEnd" required /></div>
+          <div class="field span-2"><label>候補時間</label><input id="schedulePollTimes" required placeholder="例：20:00, 21:00, 22:00" /><div class="panel-sub">複数の場合はカンマ区切り。期間内の各日 × 候補時間を自動で作ります。</div></div>
+          <div class="field"><label>回答期限</label><input type="date" id="schedulePollDeadline" required /></div>
+          <label class="preference-toggle"><input type="checkbox" id="schedulePollNotify" checked /><span><strong>未回答者へ通知する</strong><small>回答完了まで全画面の左上に表示</small></span></label>
+        </div>
+        <div class="form-error" id="schedulePollFormError" role="alert" hidden></div>
+        <div class="modal-actions"><button type="button" class="btn ghost" data-close-dialog="schedulePollDialog">キャンセル</button><button type="submit" class="btn primary">作成して通知</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="persistent-notifications" id="persistentNotifications" aria-live="polite"></div>
 
   <dialog id="noteDialog">
     <form method="dialog" id="noteForm">

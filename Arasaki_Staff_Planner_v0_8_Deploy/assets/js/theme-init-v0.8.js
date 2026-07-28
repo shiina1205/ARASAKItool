@@ -1,5 +1,5 @@
 (()=>{
-      const fallback={mode:'dark',color:'blue'};
+      const fallback={mode:'light',color:'blue'};
       try{
         const saved=JSON.parse(localStorage.getItem('arasaki_staff_planner_theme_v1')||'null')||fallback;
         const mode=['dark','light'].includes(saved.mode)?saved.mode:fallback.mode;
