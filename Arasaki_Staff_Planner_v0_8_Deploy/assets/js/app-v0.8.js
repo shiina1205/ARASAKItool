@@ -1879,6 +1879,19 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       }
       return result;
     }
+    function scheduleTimeRow(value='20:00') {
+      return `<div class="schedule-time-row"><input type="time" class="schedule-time-input" value="${escapeHtml(value)}" required /><button class="icon-btn schedule-remove-time" type="button" title="この時間を削除" aria-label="この時間を削除">✕</button></div>`;
+    }
+    function setScheduleTimes(times=['20:00']) {
+      const picker=document.getElementById('schedulePollTimePicker');if(!picker)return;
+      const values=Array.isArray(times)&&times.length?times:['20:00'];
+      picker.innerHTML=values.map(scheduleTimeRow).join('');
+    }
+    function addScheduleTime(value='') {
+      const picker=document.getElementById('schedulePollTimePicker');if(!picker)return;
+      picker.insertAdjacentHTML('beforeend',scheduleTimeRow(value));
+      picker.querySelector('.schedule-time-row:last-child .schedule-time-input')?.focus();
+    }
     function scheduleResponseComplete(poll,userKey=scheduleUserKey()) {
       const answers=poll?.responses?.[userKey]?.answers||{};
       return Boolean(poll?.slots?.length)&&poll.slots.every(slot=>['yes','no','maybe'].includes(answers[slot.id]?.status));
@@ -1943,7 +1956,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       document.getElementById('schedulePollDescription').value=poll?.description||'';
       document.getElementById('schedulePollStart').value=poll?.start||localDateString();
       document.getElementById('schedulePollEnd').value=poll?.end||localDateString(addDays(new Date(),6));
-      document.getElementById('schedulePollTimes').value=(poll?.times||['20:00']).join(', ');
+      setScheduleTimes(poll?.times||['20:00']);
       document.getElementById('schedulePollDeadline').value=poll?.deadline||localDateString(addDays(new Date(),3));
       document.getElementById('schedulePollNotify').checked=poll?.notify!==false;
       document.getElementById('schedulePollFormError').hidden=true;
@@ -2144,6 +2157,13 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     document.getElementById('newProjectBtn').addEventListener('click',()=>openProjectDialog());
     document.getElementById('newMeetingBtn').addEventListener('click',()=>openMeetingDialog());
     document.getElementById('newSchedulePollBtn').addEventListener('click',()=>openSchedulePollDialog());
+    document.getElementById('scheduleAddTimeBtn').addEventListener('click',()=>addScheduleTime(''));
+    document.getElementById('schedulePollTimePicker').addEventListener('click',e=>{
+      const remove=e.target.closest('.schedule-remove-time');if(!remove)return;
+      const picker=document.getElementById('schedulePollTimePicker');
+      if(picker.querySelectorAll('.schedule-time-row').length<=1){showToast('候補時間は1つ以上必要です');return;}
+      remove.closest('.schedule-time-row').remove();
+    });
     document.getElementById('newNoteBtn').addEventListener('click',()=>openNoteDialog());
     document.getElementById('yearlyAddEventBtn').addEventListener('click',()=>openEventDialog(null,{date:`${yearlyCursor||new Date().getFullYear()}-01-01`,repeatType:'yearly'}));
     document.getElementById('saveYearlyBtn').addEventListener('click',saveYearlyLog);
@@ -2263,9 +2283,9 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const error=document.getElementById('schedulePollFormError'),id=document.getElementById('schedulePollId').value;
       const existing=state.schedulePolls.find(poll=>poll.id===id);
       const start=document.getElementById('schedulePollStart').value,end=document.getElementById('schedulePollEnd').value;
-      const times=[...new Set(document.getElementById('schedulePollTimes').value.split(/[,、\s]+/).map(value=>value.trim()).filter(value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(value)))].sort();
+      const times=[...new Set([...document.querySelectorAll('#schedulePollTimePicker .schedule-time-input')].map(input=>input.value).filter(value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(value)))].sort();
       const slots=scheduleSlots(start,end,times);
-      if(!slots.length){error.textContent='期間と候補時間を確認してください。時間は「20:00, 21:00」の形式で入力します。';error.hidden=false;return;}
+      if(!slots.length){error.textContent='期間と候補時間を確認してください。候補時間は1つ以上選択します。';error.hidden=false;return;}
       if(slots.length>80){error.textContent='候補が多すぎます。期間または候補時間を減らし、80件以内にしてください。';error.hidden=false;return;}
       const poll={id:id||uid('schedule'),title:document.getElementById('schedulePollTitle').value.trim(),description:document.getElementById('schedulePollDescription').value.trim(),start,end,times,slots,deadline:document.getElementById('schedulePollDeadline').value,notify:document.getElementById('schedulePollNotify').checked,status:existing?.status||'open',responses:{...(existing?.responses||{})},createdAt:existing?.createdAt||new Date().toISOString(),createdBy:scheduleUserName(),createdByUid:scheduleUserKey(),updatedAt:new Date().toISOString()};
       if(!poll.title||!poll.deadline)return;
