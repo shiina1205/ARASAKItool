@@ -379,7 +379,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const mark=tab?.querySelector('.workspace-tab-mark');if(!mark)return;
       mark.innerHTML=icon?`<img class="workspace-tab-image" src="${escapeHtml(icon)}" alt="" />`:'⚓';
     }
-    let activeWorkspace='all';
+    let activeWorkspace=APP_SURFACE==='app'?'personal':'all';
     window.getActivePlannerWorkspace=()=>activeWorkspace;
     function itemWorkspace(item) { return item?.workspaceId||'arasaki-shipyard'; }
     function inActiveWorkspace(item) { return activeWorkspace==='all'||itemWorkspace(item)===activeWorkspace; }
@@ -431,7 +431,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     }
     function syncWorkspaceTabsForView() {
       const permissionsOnly=currentView==='permissions';
-      const allUnavailable=currentView==='mypage'||currentView==='triage';
+      const allUnavailable=APP_SURFACE==='app'||currentView==='mypage'||currentView==='triage';
       const allTab=document.querySelector('.workspace-tab[data-workspace="all"]');
       const personalTab=document.querySelector('.workspace-tab[data-workspace="personal"]');
       const eventTab=document.querySelector(`.workspace-tab[data-workspace="${eventWorkspaceId}"]`);

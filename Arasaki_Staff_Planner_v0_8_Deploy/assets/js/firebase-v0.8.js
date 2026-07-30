@@ -50,6 +50,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
 
     let auth=null, db=null, activeUser=null, authUser=null;
     let ownMember=null, ownRequest=null, workspaceUid='';
+    let profileSetupOpen=false;
     let membersData={}, requestsData={}, profilesData={};
     let unsubscribeOwnMember=null, unsubscribeOwnRequest=null, unsubscribeMembers=null, unsubscribeRequests=null, unsubscribeProfiles=null, unsubscribeGlobalManagement=null;
     let workspaceUnsubscribers=[], workspaceReady=false, cloudBaseline=null, pendingCloudState=null;
@@ -561,6 +562,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
     }
 
     function showJoinRequest(user,request,member) {
+      profileSetupOpen=false;
       stopWorkspaceListeners();
       activeUser=null;
       window.setStaffCloudUser?.(null);
@@ -568,6 +570,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       setGate(true);showUid('');
       if(!joinPanel)return;
       joinPanel.hidden=false;
+      if(joinNameField)joinNameField.hidden=false;
+      if(joinSubmit){joinSubmit.textContent='参加申請を送信';joinSubmit.hidden=false;}
+      if(joinRefresh)joinRefresh.hidden=false;
       const invitationToken=new URLSearchParams(location.search).get('invite')||new URLSearchParams(location.search).get('globalInvite')||'';
       if(invitationToken){
         joinTitle.textContent='イベント招待リンク';
@@ -909,7 +914,28 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       }
     }
 
-    function enterWorkspace(user,member) {
+    async function requireVrchatProfile(user,member) {
+      if(!db||!user||!member)return false;
+      try{
+        const snapshot=await get(ref(db,`teams/${TEAM_ID}/profiles/${user.uid}`));
+        const profile=snapshot.val()||{};
+        if(profile.vrchat||profile.profiles?.personal?.vrchat)return false;
+      }catch(error){console.error('VRChatプロフィール確認エラー',error);}
+      profileSetupOpen=true;activeUser=null;window.setStaffCloudUser?.(null);window.setStaffReadOnly?.(true);
+      setGate(true);showUid('');if(loginBtn)loginBtn.hidden=true;if(ownerAccessDenied)ownerAccessDenied.hidden=true;
+      if(joinPanel)joinPanel.hidden=false;
+      if(joinTitle)joinTitle.textContent='VRChatプロフィールを登録';
+      if(joinDescription)joinDescription.textContent='Googleログインが完了しました。続けてVRChatプロフィールリンクを登録してください。';
+      if(joinAccount)joinAccount.textContent=user.email||user.displayName||'';
+      if(joinNameField)joinNameField.hidden=true;
+      if(joinVrchat)joinVrchat.value='';
+      if(joinSubmit)joinSubmit.textContent='登録して利用を開始';
+      if(joinRefresh)joinRefresh.hidden=true;
+      if(joinStatus)joinStatus.textContent='VRChatのプロフィールURLは必須です。';
+      setAuthStatus('VRChatプロフィールを登録してください。');
+      return true;
+    }
+    async function enterWorkspace(user,member) {
       const normalizedMemberRole=normalizedRole(member.role||'cast');
       const nextUser={uid:user.uid,email:user.email||member.email||'',name:member.displayName||user.displayName||user.email||'スタッフ',role:normalizedMemberRole,roleLabel:roleLabels[normalizedMemberRole]||normalizedMemberRole};
       if(window.getPlannerSurface?.()==='owner'&&!['owner','operations'].includes(normalizedMemberRole)){
@@ -924,6 +950,8 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         setAuthStatus(`${nextUser.name} はイベントオーナー・運営権限ではログインしていません。`);
         return;
       }
+      if(await requireVrchatProfile(user,member))return;
+      profileSetupOpen=false;
       if(loginBtn)loginBtn.hidden=false;
       if(ownerAccessDenied)ownerAccessDenied.hidden=true;
       const roleChanged=activeUser&&activeUser.role!==nextUser.role;
@@ -949,7 +977,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
 
     function refreshAccessView() {
       if(!authUser)return;
-      if(ownMember&&ownMember.active!==false)enterWorkspace(authUser,ownMember);
+      if(ownMember&&ownMember.active!==false)void enterWorkspace(authUser,ownMember);
       else showJoinRequest(authUser,ownRequest,ownMember);
     }
 
@@ -962,22 +990,30 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
 
     async function submitJoinRequest() {
       if(!db||!authUser)return;
-      const name=joinName.value.trim();
+      const name=profileSetupOpen?(ownMember?.displayName||authUser.displayName||authUser.email||'スタッフ'):joinName.value.trim();
       if(!name){joinStatus.textContent='表示名を入力してください。';joinName.focus();return;}
       const vrchat=joinVrchat?.value.trim()||'';
-      if(!/^https:\/\/(www\.)?vrchat\.com\/home\/user\/usr_/i.test(vrchat)){joinStatus.textContent='VRChatアカウントリンクを入力してください。';joinVrchat?.focus();return;}
+      let normalizedVrchat='';
+      try{normalizedVrchat=parseVrchatProfileUrl(vrchat).url;}catch(error){joinStatus.textContent=error.message||'VRChatアカウントリンクを入力してください。';joinVrchat?.focus();return;}
       joinSubmit.disabled=true;joinStatus.textContent='参加申請を送信しています…';
       try{
+        if(profileSetupOpen&&ownMember){
+          const profileRef=ref(db,`teams/${TEAM_ID}/profiles/${authUser.uid}`);
+          const snapshot=await get(profileRef),current=snapshot.val()||{};
+          await set(profileRef,{...current,displayName:name,role:normalizedRole(ownMember.role||'cast'),active:ownMember.active!==false,photoURL:authUser.photoURL||current.photoURL||'',discord:current.discord||'',vrchat:normalizedVrchat,profiles:{...(current.profiles||{}),personal:{...(current.profiles?.personal||{}),displayName:name,vrchat:normalizedVrchat}},updatedAt:serverTimestamp(),updatedByUid:authUser.uid});
+          profileSetupOpen=false;joinStatus.textContent='VRChatプロフィールを登録しました。';
+          await enterWorkspace(authUser,ownMember);return;
+        }
         const globalToken=new URLSearchParams(location.search).get('globalInvite')||'';
         if(globalToken){
           const inviteSnapshot=await get(ref(db,`globalInvites/${globalToken}`)),invite=inviteSnapshot.val();
           if(!invite?.active||Number(invite.used)>=1||Date.now()>new Date(invite.expiresAt).getTime())throw new Error('この代表者招待リンクは無効または期限切れです。');
-          await set(ref(db,`globalManagement/applications/${authUser.uid}`),{id:authUser.uid,uid:authUser.uid,eventId:invite.eventId,displayName:name,email:authUser.email||'',photoURL:authUser.photoURL||'',vrchat,invitationToken:globalToken,status:'pending',requestedAt:serverTimestamp()});
+          await set(ref(db,`globalManagement/applications/${authUser.uid}`),{id:authUser.uid,uid:authUser.uid,eventId:invite.eventId,displayName:name,email:authUser.email||'',photoURL:authUser.photoURL||'',vrchat:normalizedVrchat,invitationToken:globalToken,status:'pending',requestedAt:serverTimestamp()});
           joinStatus.textContent='イベント代表者の参加申請を送信しました。全体管理者の承認をお待ちください。';
           return;
         }
         await set(ref(db,`teams/${TEAM_ID}/joinRequests/${authUser.uid}`),{
-          uid:authUser.uid,displayName:name,email:authUser.email||'',photoURL:authUser.photoURL||'',vrchat,invitationToken:new URLSearchParams(location.search).get('invite')||'',status:'pending',requestedAt:serverTimestamp()
+          uid:authUser.uid,displayName:name,email:authUser.email||'',photoURL:authUser.photoURL||'',vrchat:normalizedVrchat,invitationToken:new URLSearchParams(location.search).get('invite')||'',status:'pending',requestedAt:serverTimestamp()
         });
         joinStatus.textContent='参加申請を送信しました。承認されるまでこの画面で待つか、後からもう一度開いてください。';
       }catch(error){console.error(error);joinStatus.textContent=`申請を送信できません：${error.message}`;}
