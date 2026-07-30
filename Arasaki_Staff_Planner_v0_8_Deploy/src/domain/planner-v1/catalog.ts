@@ -723,3 +723,65 @@ export function validateCategoryMaster(
 
   return issues;
 }
+
+export type CategoryHierarchyTemplate = 'simple' | 'normal' | 'detailed';
+
+const CATEGORY_HIERARCHY_TEMPLATE_DEPTH: Readonly<
+  Record<CategoryHierarchyTemplate, CategoryLevel>
+> = {
+  simple: 1,
+  normal: 2,
+  detailed: 3,
+};
+
+/**
+ * Builds the category master shown by a hierarchy template.
+ *
+ * Existing categories referenced by records (and their ancestors) are retained
+ * so applying a shallower template never breaks saved task/project paths.
+ */
+export function buildCategoryHierarchyTemplate(
+  template: CategoryHierarchyTemplate,
+  current: readonly Category[],
+  retainedIds: readonly string[] = [],
+  defaults: readonly Category[] = INITIAL_CATEGORY_MASTER,
+): Category[] {
+  if (!Object.hasOwn(CATEGORY_HIERARCHY_TEMPLATE_DEPTH, template)) {
+    throw new RangeError(`未対応のカテゴリ階層テンプレートです: ${String(template)}`);
+  }
+  const maxLevel = CATEGORY_HIERARCHY_TEMPLATE_DEPTH[template];
+  const currentById = new Map(current.map(category => [category.id, category]));
+  const keep = new Set(retainedIds);
+
+  for (const id of [...keep]) {
+    let category = currentById.get(id);
+    const visited = new Set<string>();
+    while (category?.parentId && !visited.has(category.id)) {
+      visited.add(category.id);
+      keep.add(category.parentId);
+      category = currentById.get(category.parentId);
+    }
+  }
+
+  for (const category of current) {
+    if (category.system) keep.add(category.id);
+  }
+
+  const result = new Map<string, Category>();
+  for (const category of defaults) {
+    if (category.level <= maxLevel) result.set(category.id, cloneCategory(category));
+  }
+  for (const category of current) {
+    if (keep.has(category.id)) result.set(category.id, cloneCategory(category));
+  }
+
+  return [...result.values()].sort((a, b) =>
+    a.level - b.level ||
+    (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+    a.name.localeCompare(b.name, 'ja'),
+  );
+}
+
+function cloneCategory(category: Category): Category {
+  return JSON.parse(JSON.stringify(category)) as Category;
+}

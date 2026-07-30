@@ -1,11 +1,18 @@
 const STORAGE_KEY = 'arasaki_staff_planner_v1';
+    let plannerStateStorage=localStorage;
+    let plannerCloudSessionScope='';
     const DOMAIN = window.ARASAKI_PLANNER_DOMAIN;
     if (!DOMAIN) throw new Error('Planner domain の初期化に失敗しました');
     const surfacePath=location.pathname.split('/').filter(Boolean)[0];
     const APP_SURFACE=surfacePath==='admin'?'global':surfacePath==='owner'?'owner':'app';
-    const OWNER_SURFACE_VIEWS=new Set(['adminEvent','adminAudit','adminInvites','adminApplications','adminLinks','adminRoles','permissions','settings','backup']);
-    const GLOBAL_SURFACE_VIEWS=new Set(['globalEvents','globalEventList','globalEventDetails','globalInvites','globalApplications','globalAudit','globalTrash']);
-    const STAFF_SURFACE_HIDDEN_VIEWS=new Set(['tasksAll','backup','permissions']);
+    const SURFACE_VIEW_ACCESS=DOMAIN.SURFACE_VIEW_ACCESS||{
+      app:['home','mypage','calendar','triage','future','yearly','weekly','daily','tasksAssigned','tasksOperations','tasksStaff','tasksCast','events','projects','meetings','schedulePolls','notes','settings'],
+      owner:['adminEvent','adminAudit','adminInvites','adminApplications','adminLinks','adminRoles','permissions','settings','backup'],
+      global:['globalEvents','globalEventList','globalEventDetails','globalInvites','globalApplications','globalAudit','globalTrash']
+    };
+    const STAFF_SURFACE_VIEWS=new Set(SURFACE_VIEW_ACCESS.app);
+    const OWNER_SURFACE_VIEWS=new Set(SURFACE_VIEW_ACCESS.owner);
+    const GLOBAL_SURFACE_VIEWS=new Set(SURFACE_VIEW_ACCESS.global);
     document.body.dataset.surface=APP_SURFACE;
     window.getPlannerSurface=()=>APP_SURFACE;
 
@@ -38,8 +45,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       updateThemeControls();
     }
     applyTheme(appearanceTheme,false);
-    const APP_VERSION = 109;
-    const APP_BUILD = 'v0.9-category';
+    const APP_VERSION = 110;
+    const APP_BUILD = 'v0.9.10';
     window.__ARASAKI_STAFF_PLANNER_BUILD__ = APP_BUILD;
     const repeatTypeLabels = { none:'繰り返しなし', daily:'毎日', weekly:'毎週', monthly:'毎月', yearly:'毎年' };
     const weekdayShortLabels = ['日','月','火','水','木','金','土'];
@@ -171,7 +178,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     function activeTemplates() { return (state?.projectTemplates||defaultProjectTemplates()).filter(template=>template.active!==false); }
     function projectTemplate(id) { return (state?.projectTemplates||defaultProjectTemplates()).find(template=>template.id===id); }
     function projectTemplateCandidates(majorId,middleId) {
-      return activeTemplates().filter(template=>template.majorCategoryId===majorId&&(!template.middleCategoryId||template.middleCategoryId===middleId));
+      const majorOnly=categoryHierarchyDepth()===1;
+      return activeTemplates().filter(template=>template.majorCategoryId===majorId&&(majorOnly||!template.middleCategoryId||template.middleCategoryId===middleId));
     }
     let priorityLabels = { high:'高', medium:'中', low:'低' };
     let priorityOrder = { high:0, medium:1, low:2 };
@@ -278,11 +286,12 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         return enforceRequiredMenuEntries(defaultMenuConfig().map(item=>{
           if(item.type==='group')return item;
           const old=legacy.get(item.view);
-          return {...item,visible:old?.visible===false?false:item.visible,pinned:!!old?.pinned};
+          return {...item,icon:String(old?.icon||item.icon||'').trim()||undefined,visible:old?.visible===false?false:item.visible,pinned:!!old?.pinned};
         }));
       }
       const result=[]; const pageSeen=new Set(); const groupSeen=new Set();
       const defaults=defaultMenuConfig();
+      const allowedPageViews=new Set(defaults.filter(item=>item.type==='page').map(item=>item.view));
       source.forEach(item=>{
         if(item?.type==='group'){
           const id=String(item.id||'').trim(); if(!id||groupSeen.has(id))return;
@@ -291,13 +300,12 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
           return;
         }
         const view=typeof item==='string'?item:item?.view;
-        if(!MENU_DEFINITIONS.some(def=>def.view===view)||pageSeen.has(view))return;
+        if(!allowedPageViews.has(view)||pageSeen.has(view))return;
         const fallback=defaults.find(entry=>entry.type==='page'&&entry.view===view);
-        pageSeen.add(view); result.push({type:'page',view,visible:item?.visible!==false,pinned:item?.pinned===undefined?!!fallback?.pinned:!!item.pinned,parentId:item?.parentId||null,roleVisibility:{...(fallback?.roleVisibility||{}),...(item?.roleVisibility||{})}});
+        pageSeen.add(view); result.push({type:'page',view,icon:String(item?.icon||fallback?.icon||'').trim()||undefined,visible:item?.visible!==false,pinned:item?.pinned===undefined?!!fallback?.pinned:!!item.pinned,parentId:item?.parentId||null,roleVisibility:{...(fallback?.roleVisibility||{}),...(item?.roleVisibility||{})}});
       });
-      MENU_DEFINITIONS.forEach(def=>{
-        if(pageSeen.has(def.view))return;
-        const fallback=defaults.find(item=>item.type==='page'&&item.view===def.view)||menuPage(def.view);
+      defaults.filter(item=>item.type==='page').forEach(fallback=>{
+        if(pageSeen.has(fallback.view))return;
         result.push({...fallback,parentId:result.some(item=>item.type==='group'&&item.id===fallback.parentId)?fallback.parentId:null});
       });
       const validGroups=new Set(result.filter(item=>item.type==='group').map(item=>item.id));
@@ -334,6 +342,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     function normalizeStaffRole(role='cast') { return LEGACY_ROLE_MAP[role] || (['owner','operations','staff','cast','external_collaborator'].includes(role)?role:'cast'); }
     function currentStaffRole() { return normalizeStaffRole(window.currentStaffUser?.role||'cast'); }
     function canManageTasks() { return ['owner','operations'].includes(currentStaffRole()); }
+    function canManageCategoryMaster() { return currentStaffRole()==='owner'; }
     function canManageDropdowns() { return true; }
     function canEditSettingKey(key) { return activeWorkspace!==eventWorkspaceId||!['importanceLevels','urgencyLevels'].includes(key)||canManageTasks(); }
     function taskAudiencesForRole(role=currentStaffRole()) {
@@ -341,13 +350,27 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       if(normalized==='owner')return ['owner','operations','staff','cast'];
       if(normalized==='operations')return ['operations','staff','cast'];
       if(normalized==='staff')return ['staff','cast'];
+      if(normalized==='external_collaborator')return [];
       return ['cast'];
     }
     function normalizeTaskAudience(value='staff') { return ['owner','operations','staff','cast'].includes(value)?value:'staff'; }
     function normalizeVisibility(value='staff') { return normalizeTaskAudience(value); }
     function taskAudienceOf(task) { return normalizeTaskAudience(task?.visibility||task?.audience||task?.taskAudience||'staff'); }
-    function canCurrentRoleSeeTask(task) { return taskAudiencesForRole().includes(taskAudienceOf(task)); }
-    function canCurrentRoleSeeVisibility(item) { return taskAudiencesForRole().includes(normalizeVisibility(item?.visibility||item?.audience||'staff')); }
+    function canCurrentRoleSeeTask(task) {
+      if(currentStaffRole()==='external_collaborator')return itemWorkspace(task)==='personal';
+      return taskAudiencesForRole().includes(taskAudienceOf(task));
+    }
+    function canCurrentRoleSeeVisibility(item) {
+      const currentUid=window.currentStaffUser?.uid||'';
+      if(currentStaffRole()==='external_collaborator'){
+        return Boolean(currentUid&&(
+          (item?.memberUids||[]).includes(currentUid)
+          ||(item?.externalCollaboratorUids||[]).includes(currentUid)
+          ||item?.externalCollaborators?.[currentUid]
+        ));
+      }
+      return taskAudiencesForRole().includes(normalizeVisibility(item?.visibility||item?.audience||'staff'));
+    }
     const WORKSPACE_LABELS={personal:'個人用','arasaki-shipyard':'荒嵜造船所用'};
     let eventWorkspaceId='arasaki-shipyard';
     let eventWorkspaceName='荒嵜造船所';
@@ -385,6 +408,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     function inActiveWorkspace(item) { return activeWorkspace==='all'||itemWorkspace(item)===activeWorkspace; }
     function visibleTasks() { return state.tasks.filter(task=>canCurrentRoleSeeTask(task)&&inActiveWorkspace(task)); }
     function visibleEvents() { return state.events.filter(inActiveWorkspace); }
+    function visibleMeetings() { return state.meetings.filter(inActiveWorkspace); }
     function visibleFutureItems() { return state.futureItems.filter(inActiveWorkspace); }
     function canManageFutureWorkspace(workspaceId) { return workspaceId==='personal'||canManageTasks(); }
     function canManageFutureItem(item) { return canManageFutureWorkspace(itemWorkspace(item)); }
@@ -422,6 +446,24 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         else filter.innerHTML='<option value="all">すべてのイベント用カテゴリ</option>'+majorCategories({activeOnly:true}).map(item=>`<option value="major:${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
         filter.value=[...filter.options].some(option=>option.value===current)?current:'all';
       }
+      const taskPersonalCategory=document.getElementById('taskPersonalCategoryFilterField');
+      const taskPersonalType=document.getElementById('taskPersonalTypeFilterField');
+      const taskHierarchyFields=['taskMajorFilterField','taskMiddleFilterField','taskSmallFilterField'];
+      if(taskPersonalCategory)taskPersonalCategory.hidden=!personal;
+      if(taskPersonalType)taskPersonalType.hidden=!personal;
+      taskHierarchyFields.forEach(id=>{const field=document.getElementById(id);if(field)field.hidden=personal;});
+      const taskCategoryFilter=document.getElementById('categoryFilter');
+      const taskTypeFilter=document.getElementById('typeFilter');
+      if(personal&&taskCategoryFilter){
+        const current=taskCategoryFilter.value;
+        taskCategoryFilter.innerHTML='<option value="all">すべての個人用カテゴリ</option>'+personalTaskCategories().map(item=>`<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`).join('');
+        taskCategoryFilter.value=[...taskCategoryFilter.options].some(option=>option.value===current)?current:'all';
+        if(taskTypeFilter)taskTypeFilter.innerHTML=groupedTaskTypeFilterOptions(taskCategoryFilter.value,taskTypeFilter.value||'all');
+        ['taskMajorFilter','taskMiddleFilter','taskSmallFilter'].forEach(id=>{const select=document.getElementById(id);if(select)select.value='all';});
+      }else{
+        if(taskCategoryFilter)taskCategoryFilter.value='all';
+        if(taskTypeFilter)taskTypeFilter.value='all';
+      }
     }
     function applyActiveWorkspace(nextWorkspace) {
       activeWorkspace=['all','personal',eventWorkspaceId].includes(nextWorkspace)?nextWorkspace:'all';
@@ -431,8 +473,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     }
     function syncWorkspaceTabsForView() {
       const permissionsOnly=currentView==='permissions';
-      const allUnavailable=currentView==='mypage'||currentView==='triage';
       const roleTaskList=['tasksOperations','tasksStaff','tasksCast'].includes(currentView);
+      const allUnavailable=currentView==='mypage'||currentView==='triage'||roleTaskList;
       const allTab=document.querySelector('.workspace-tab[data-workspace="all"]');
       const personalTab=document.querySelector('.workspace-tab[data-workspace="personal"]');
       const eventTab=document.querySelector(`.workspace-tab[data-workspace="${eventWorkspaceId}"]`);
@@ -440,17 +482,17 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       if(personalTab)personalTab.hidden=permissionsOnly||roleTaskList;
       if(eventTab)eventTab.hidden=false;
       if(permissionsOnly&&activeWorkspace!==eventWorkspaceId)applyActiveWorkspace(eventWorkspaceId);
-      if(roleTaskList&&activeWorkspace==='personal')applyActiveWorkspace(eventWorkspaceId);
+      if(roleTaskList&&activeWorkspace!==eventWorkspaceId)applyActiveWorkspace(eventWorkspaceId);
       if(allUnavailable&&activeWorkspace==='all')applyActiveWorkspace('personal');
     }
     function pageAllowedForRole(view,role=currentStaffRole()) {
       const normalized=normalizeStaffRole(role);
       if(APP_SURFACE==='owner'&&!OWNER_SURFACE_VIEWS.has(view))return false;
       if(APP_SURFACE==='global'&&!GLOBAL_SURFACE_VIEWS.has(view))return false;
-      if(APP_SURFACE==='app'&&STAFF_SURFACE_HIDDEN_VIEWS.has(view))return false;
+      if(APP_SURFACE==='app'&&!STAFF_SURFACE_VIEWS.has(view))return false;
       if(view==='tasksAll')return normalized==='owner';
       if(view==='tasksAssigned')return true;
-      if(normalized==='external_collaborator')return ['home','mypage','calendar','events','projects','meetings','schedulePolls','settings'].includes(view);
+      if(normalized==='external_collaborator')return ['home','mypage','calendar','future','yearly','weekly','daily','tasksAssigned','events','projects','settings'].includes(view);
       if(view==='tasksOperations')return normalized==='owner'||normalized==='operations';
       if(view==='tasksStaff')return normalized==='owner'||normalized==='operations'||normalized==='staff';
       if(view==='tasksCast')return true;
@@ -805,9 +847,20 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       if(selectedNode&&!options.some(item=>item.id===selectedNode.id))options.push(selectedNode);
       return `<option value="${escapeHtml(blankValue)}">${escapeHtml(blankLabel)}</option>${options.map(item=>`<option value="${escapeHtml(item.id)}" ${item.id===selected?'selected':''}>${escapeHtml(item.name)}${item.active===false?'（無効）':''}</option>`).join('')}`;
     }
+    function categoryHierarchyDepth() {
+      const template=state.adminConfig?.categoryHierarchyTemplate||state.adminConfig?.event?.categoryHierarchyTemplate;
+      return {simple:1,normal:2,detailed:3}[template]||3;
+    }
     function populateHierarchySelects(ids,selection={},config={}) {
       const major=document.getElementById(ids.major),middle=document.getElementById(ids.middle),small=document.getElementById(ids.small);
       if(!major||!middle||!small)return;
+      const depth=categoryHierarchyDepth();
+      const middleVisible=depth>=2,smallVisible=depth>=3;
+      const middleField=middle.closest('.field'),smallField=small.closest('.field');
+      if(middleField)middleField.hidden=!middleVisible;
+      if(smallField)smallField.hidden=!smallVisible;
+      middle.required=Boolean(config.requireMiddle&&middleVisible&&!config.filter);
+      small.required=false;
       const blankValue=config.filter?'all':'';
       const activeOnly=config.activeOnly!==false;
       const selectedMajor=Object.prototype.hasOwnProperty.call(selection,'majorCategoryId')?selection.majorCategoryId:major.value;
@@ -815,24 +868,25 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       major.innerHTML=categorySelectOptions(majors,selectedMajor,blankValue,config.filter?'すべて':'大カテゴリを選択');
       major.value=[...major.options].some(option=>option.value===selectedMajor)?selectedMajor:blankValue;
       const effectiveMajor=major.value===blankValue?'':major.value;
-      const selectedMiddle=effectiveMajor?(Object.prototype.hasOwnProperty.call(selection,'middleCategoryId')?selection.middleCategoryId:middle.value):'';
-      const middles=effectiveMajor?categoryChildren(effectiveMajor,{activeOnly}):[];
+      const selectedMiddle=middleVisible&&effectiveMajor?(Object.prototype.hasOwnProperty.call(selection,'middleCategoryId')?selection.middleCategoryId:middle.value):'';
+      const middles=middleVisible&&effectiveMajor?categoryChildren(effectiveMajor,{activeOnly}):[];
       middle.innerHTML=categorySelectOptions(middles,selectedMiddle,blankValue,config.filter?'すべて':'中カテゴリなし');
-      middle.disabled=!effectiveMajor;
+      middle.disabled=!middleVisible||!effectiveMajor;
       middle.value=[...middle.options].some(option=>option.value===selectedMiddle)?selectedMiddle:blankValue;
       const effectiveMiddle=middle.value===blankValue?'':middle.value;
-      const selectedSmall=effectiveMiddle?(Object.prototype.hasOwnProperty.call(selection,'smallCategoryId')?selection.smallCategoryId:small.value):'';
-      const smalls=effectiveMiddle?categoryChildren(effectiveMiddle,{activeOnly}):[];
+      const selectedSmall=smallVisible&&effectiveMiddle?(Object.prototype.hasOwnProperty.call(selection,'smallCategoryId')?selection.smallCategoryId:small.value):'';
+      const smalls=smallVisible&&effectiveMiddle?categoryChildren(effectiveMiddle,{activeOnly}):[];
       small.innerHTML=categorySelectOptions(smalls,selectedSmall,blankValue,config.filter?'すべて':'小カテゴリなし');
-      small.disabled=!effectiveMiddle;
+      small.disabled=!smallVisible||!effectiveMiddle;
       small.value=[...small.options].some(option=>option.value===selectedSmall)?selectedSmall:blankValue;
     }
     function hierarchySelection(ids) {
       const clean=value=>value&&value!=='all'?value:undefined;
+      const depth=categoryHierarchyDepth();
       return {
         majorCategoryId:clean(document.getElementById(ids.major)?.value)||'',
-        middleCategoryId:clean(document.getElementById(ids.middle)?.value),
-        smallCategoryId:clean(document.getElementById(ids.small)?.value)
+        middleCategoryId:depth>=2?clean(document.getElementById(ids.middle)?.value):undefined,
+        smallCategoryId:depth>=3?clean(document.getElementById(ids.small)?.value):undefined
       };
     }
     const TASK_HIERARCHY_IDS={major:'taskMajorCategory',middle:'taskMiddleCategory',small:'taskSmallCategory'};
@@ -906,8 +960,56 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       {id:'drive_delivery',label:'納品用Googleドライブ',url:'',roles:['owner','operations','staff','cast','external_collaborator']},
       {id:'drive_new_cast',label:'新規キャスト用Googleドライブ',url:'',roles:['owner','operations','cast']}
     ]};}
+    function normalizeAdminConfig(value={}) {
+      const defaults=defaultAdminConfig();
+      const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+      return {
+        ...defaults,
+        ...source,
+        event:{...defaults.event,...(source.event||{})},
+        // 外部協力者用トークンは公開設定へ保存せず、Firebaseの招待専用領域で管理します。
+        invites:(Array.isArray(source.invites)?source.invites:[]).filter(invite=>invite?.kind!=='external'),
+        links:Array.isArray(source.links)?source.links:defaults.links
+      };
+    }
+    let publishedProjectInvites=[];
+    function adminInviteRecords() {
+      const byToken=new Map();
+      [...(state?.adminConfig?.invites||[]),...publishedProjectInvites].forEach(invite=>{
+        if(invite?.token)byToken.set(invite.token,invite);
+      });
+      return [...byToken.values()];
+    }
     const emptyState = () => ({ version:APP_VERSION, categoryMigrationVersion:0, categoryMaster:defaultCategoryMaster(), projectTemplates:defaultProjectTemplates(), tasks:[], events:[], projects:[], meetings:[], schedulePolls:[], notes:[], futureItems:[], trashItems:[], recoveryArchive:[], yearlyLogs:{}, weeklyLogs:{}, settings:defaultSettings(), preferences:defaultAppPreferences(), menuConfig:defaultMenuConfig(), adminConfig:defaultAdminConfig(), dailyEntries:{}, changeLog:[], globalAdmins:{}, users:{}, permissionEvents:{}, permissionProjects:{}, permissionTasks:{}, auditLogs:{}, deleteRequests:{} });
     let state = loadState();
+    window.startPlannerCloudSession = function(scope='cloud') {
+      const nextScope=String(scope||'cloud');
+      localStorage.removeItem(STORAGE_KEY);
+      plannerStateStorage=sessionStorage;
+      if(plannerCloudSessionScope===nextScope)return;
+      sessionStorage.removeItem(STORAGE_KEY);
+      plannerCloudSessionScope=nextScope;
+      state=emptyState();
+      publishedProjectInvites=[];
+      window.clearPlannerGlobalAdminData?.();
+      syncRuntimeSettings();
+      renderAll();
+    };
+    window.endPlannerCloudSession = function() {
+      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_KEY);
+      plannerStateStorage=sessionStorage;
+      plannerCloudSessionScope='';
+      state=emptyState();
+      publishedProjectInvites=[];
+      window.clearPlannerGlobalAdminData?.();
+      syncRuntimeSettings();
+      renderAll();
+    };
+    window.applyPublishedProjectInvites = function(invites) {
+      publishedProjectInvites=(Array.isArray(invites)?invites:[]).filter(invite=>invite?.kind==='external'&&invite?.token);
+      renderAll();
+    };
     syncRuntimeSettings();
     let currentView = APP_SURFACE==='global'?'globalEventList':APP_SURFACE==='owner'?'adminEvent':'home';
     let calendarCursor = new Date();
@@ -923,7 +1025,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
 
     function loadState() {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = plannerStateStorage.getItem(STORAGE_KEY);
         if (!raw) return emptyState();
         const parsed = JSON.parse(raw);
         const next = { ...emptyState(), ...parsed };
@@ -968,6 +1070,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
           relatedEventIds:Array.isArray(project.relatedEventIds)?project.relatedEventIds:[],
           relatedProjectIds:Array.isArray(project.relatedProjectIds)?project.relatedProjectIds:[]
         })) : [];
+        next.projects.forEach(project=>{delete project.externalInvite;});
         next.meetings = Array.isArray(next.meetings) ? next.meetings : [];
         next.schedulePolls = Array.isArray(next.schedulePolls) ? next.schedulePolls : [];
         next.notes = Array.isArray(next.notes) ? next.notes.map(note=>({
@@ -989,14 +1092,14 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         migrateExistingTaskRecords(next);
         next.preferences = normalizeAppPreferences(next.preferences);
         next.menuConfig = normalizeMenuConfig(next.menuConfig);
-        next.adminConfig={...defaultAdminConfig(),...(next.adminConfig||{}),event:{...defaultAdminConfig().event,...(next.adminConfig?.event||{})},invites:Array.isArray(next.adminConfig?.invites)?next.adminConfig.invites:[],links:Array.isArray(next.adminConfig?.links)?next.adminConfig.links:defaultAdminConfig().links};
+        next.adminConfig=normalizeAdminConfig(next.adminConfig);
         next.dailyEntries = next.dailyEntries && typeof next.dailyEntries === 'object' ? next.dailyEntries : {};
         next.changeLog = Array.isArray(next.changeLog) ? next.changeLog.slice(-200) : [];
         ['globalAdmins','users','permissionEvents','permissionProjects','permissionTasks','auditLogs','deleteRequests'].forEach(key=>{
           next[key]=next[key]&&typeof next[key]==='object'&&!Array.isArray(next[key])?next[key]:{};
         });
         next.version = APP_VERSION;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        plannerStateStorage.setItem(STORAGE_KEY, JSON.stringify(next));
         return next;
       } catch (error) {
         console.error(error);
@@ -1008,7 +1111,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       state.version = APP_VERSION;
       delete state.logs;
       Object.values(state.dailyEntries||{}).forEach(entry=>{ if(entry&&typeof entry==='object') delete entry.feelingMemo; });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      plannerStateStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       if (window.currentStaffUser && window.staffCloud?.save) {
         window.staffCloud.save(state).catch(error=>{
           console.error(error);
@@ -1054,7 +1157,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
 
     window.applyRemotePlannerState = function(remoteState) {
       if (!remoteState || typeof remoteState !== 'object') return;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteState));
+      plannerStateStorage.setItem(STORAGE_KEY, JSON.stringify(remoteState));
       state = loadState();
       syncRuntimeSettings();
       renderAll();
@@ -1067,7 +1170,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       clearTimeout(remotePatchCommitTimer);
       remotePatchCommitTimer = setTimeout(()=>{
         state.version = APP_VERSION;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        plannerStateStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         if(refreshSettings) syncRuntimeSettings();
         renderAll();
       },45);
@@ -1093,7 +1196,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       }else if(section==='menuConfig'){
         state.menuConfig=normalizeMenuConfig(value);
       }else if(section==='adminConfig'){
-        state.adminConfig={...defaultAdminConfig(),...(value||{})};
+        state.adminConfig=normalizeAdminConfig(value);
       }else if(section==='categoryMaster'){
         state.categoryMaster=Array.isArray(value)?value:defaultCategoryMaster();
       }else if(section==='projectTemplates'){
@@ -1106,6 +1209,13 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       scheduleRemotePatchCommit(section==='settings'||section==='preferences'||section==='menuConfig');
     };
     window.getPlannerState = function() { return JSON.parse(JSON.stringify(state)); };
+    window.getPlannerInvitationContext = function(token) {
+      const invite=adminInviteRecords().find(item=>item.token===token&&item.active!==false);
+      const expiresAt=typeof invite?.expiresAt==='number'?invite.expiresAt:Date.parse(invite?.expiresAt||'');
+      if(!invite||Number(invite.used||0)>=Number(invite.limit||1)||!Number.isFinite(expiresAt)||expiresAt<Date.now())return null;
+      const project=state.projects.find(item=>item.id===invite.projectId);
+      return {...invite,projectVisibility:normalizeVisibility(project?.visibility||'staff'),projectName:project?.name||''};
+    };
     window.setCloudSyncStatus = function(kind,text,detail='') {
       const dot=document.getElementById('cloudStatusDot');
       const label=document.getElementById('cloudStatusText');
@@ -1159,6 +1269,11 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     }
 
     function uid(prefix) { return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`; }
+    function secureInviteToken() {
+      const bytes=new Uint8Array(24);
+      crypto.getRandomValues(bytes);
+      return [...bytes].map(value=>value.toString(16).padStart(2,'0')).join('');
+    }
     function localDateString(date = new Date()) {
       const y = date.getFullYear();
       const m = String(date.getMonth()+1).padStart(2,'0');
@@ -1648,12 +1763,13 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         (a.due||'9999-12-31').localeCompare(b.due||'9999-12-31') ||
         (priorityOrder[a.priority]??999)-(priorityOrder[b.priority]??999)
       );
+      const managementActions=canManageTasks()?'<button class="icon-btn project-task-add" title="タスク追加">＋</button><button class="icon-btn project-edit">✎</button><button class="icon-btn project-delete">⌫</button>':'';
       const done = tasks.filter(isDone).length;
       const open = tasks.length-done;
       const progress=calculateProjectCompletion(p,tasks);
       const rate=progress.rate;
       return `<article class="project-card" data-kind="project" data-id="${p.id}">
-        <div class="project-head"><div><div class="project-title">${escapeHtml(p.name)}</div><div class="meta-row"><span class="tag category-breadcrumb">${categoryPathHtml(p)}</span><span class="tag">${escapeHtml(phaseLabel(p.phaseId))}</span><span class="tag visibility-${normalizeVisibility(p.visibility)}">${escapeHtml(VISIBILITY_LABELS[normalizeVisibility(p.visibility)])}</span>${p.templateId?`<span class="tag">${escapeHtml(projectTemplate(p.templateId)?.name||p.templateId)} v${p.templateVersion||1}</span>`:''}${classificationNeeds(p)?'<span class="tag classification-alert">要分類</span>':''}${(p.endDate||p.due)?`<span class="tag">期限 ${escapeHtml(dateLabel(p.endDate||p.due,false))}</span>`:''}</div></div><div class="card-actions"><button class="btn small project-detail-open" type="button">詳細</button><button class="icon-btn project-task-add" title="タスク追加">＋</button><button class="icon-btn project-edit">✎</button><button class="icon-btn project-delete">⌫</button></div></div>
+        <div class="project-head"><div><div class="project-title">${escapeHtml(p.name)}</div><div class="meta-row"><span class="tag category-breadcrumb">${categoryPathHtml(p)}</span><span class="tag">${escapeHtml(phaseLabel(p.phaseId))}</span><span class="tag visibility-${normalizeVisibility(p.visibility)}">${escapeHtml(VISIBILITY_LABELS[normalizeVisibility(p.visibility)])}</span>${p.templateId?`<span class="tag">${escapeHtml(projectTemplate(p.templateId)?.name||p.templateId)} v${p.templateVersion||1}</span>`:''}${classificationNeeds(p)?'<span class="tag classification-alert">要分類</span>':''}${(p.endDate||p.due)?`<span class="tag">期限 ${escapeHtml(dateLabel(p.endDate||p.due,false))}</span>`:''}</div></div><div class="card-actions"><button class="btn small project-detail-open" type="button">詳細</button>${managementActions}</div></div>
         ${p.purpose?`<div class="project-purpose">${nl2br(p.purpose)}</div>`:''}
         <div class="progress"><div style="width:${rate}%"></div></div>
         <div class="project-stats"><div class="mini-stat"><strong>${rate}%</strong><span>進捗（${progress.completed}/${progress.total}）</span></div><div class="mini-stat"><strong>${open}</strong><span>未完了</span></div><div class="mini-stat"><strong>${done}</strong><span>完了</span></div></div>
@@ -1685,19 +1801,20 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       document.getElementById('todayGoal').value = entry.goal || '';
       document.getElementById('goodThings').value = entry.goodThings || '';
 
-      const summaryCategories=activeWorkspace==='personal'
-        ? personalTaskCategories().map(item=>({id:item.value,name:item.label,legacy:true}))
-        : majorCategories({activeOnly:true}).filter(item=>!item.system);
       const personalSummary=activeWorkspace==='personal';
-      const summaryTasks=personalSummary?relevantTasks:visibleTasks().filter(task=>itemWorkspace(task)!=='personal');
-      document.getElementById('homeCategorySummaryTitle').textContent=personalSummary?'個人カテゴリごとのタスク':'担当領域ごとの進捗';
-      document.getElementById('homeCategorySummarySub').textContent=personalSummary?'個人用タスクをカテゴリ別に表示':'担当領域ごとの完了率と残件数';
+      const allSummary=activeWorkspace==='all';
+      const personalCategories=personalTaskCategories().map(item=>({id:item.value,name:item.label,legacy:true,scope:'personal'}));
+      const eventCategories=majorCategories({activeOnly:true}).filter(item=>!item.system).map(item=>({...item,scope:'event'}));
+      const summaryCategories=personalSummary?personalCategories:allSummary?[...personalCategories,...eventCategories]:eventCategories;
+      const summaryTasks=personalSummary?relevantTasks:allSummary?relevantTasks:visibleTasks().filter(task=>itemWorkspace(task)!=='personal');
+      document.getElementById('homeCategorySummaryTitle').textContent=personalSummary?'個人カテゴリごとのタスク':allSummary?'個人用・イベント用の進捗':'担当領域ごとの進捗';
+      document.getElementById('homeCategorySummarySub').textContent=personalSummary?'個人用タスクをカテゴリ別に表示':allSummary?'両方のワークスペースをカテゴリ別に表示':'担当領域ごとの完了率と残件数';
       document.getElementById('categorySummary').innerHTML = summaryCategories.map(cat => {
-        const all = summaryTasks.filter(t => cat.legacy?t.category===cat.id:t.majorCategoryId===cat.id);
+        const all = summaryTasks.filter(t => cat.legacy?(itemWorkspace(t)==='personal'&&t.category===cat.id):(itemWorkspace(t)!=='personal'&&t.majorCategoryId===cat.id));
         const completed = all.filter(isDone).length;
         const remaining = all.length-completed;
         const rate = all.length ? Math.round(completed/all.length*100) : 0;
-        if(personalSummary)return `<div class="category-card"><div class="category-card-head"><strong>${escapeHtml(cat.icon||categoryIcons[cat.id]||'•')} ${escapeHtml(cat.name)}</strong><span class="remaining">${all.length}</span></div><div class="mini-meta">未完了 ${remaining}件・完了 ${completed}件</div></div>`;
+        if(cat.legacy)return `<div class="category-card"><div class="category-card-head"><strong>${escapeHtml(cat.icon||categoryIcons[cat.id]||'•')} ${escapeHtml(cat.name)}</strong><span class="remaining">${all.length}</span></div><div class="mini-meta">${allSummary?'個人用・':''}未完了 ${remaining}件・完了 ${completed}件</div></div>`;
         return `<div class="category-card"><div class="category-card-head"><strong>${escapeHtml(cat.icon||categoryIcons[cat.id]||'•')} ${escapeHtml(cat.name)}</strong><span class="remaining">${remaining}</span></div><div class="progress"><div style="width:${rate}%"></div></div><div class="mini-meta">完了 ${completed}件・進捗 ${rate}%</div></div>`;
       }).join('');
 
@@ -1714,7 +1831,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       document.getElementById('upcomingTasks').innerHTML = upcoming.length ? upcoming.map(t => taskCardHtml(t,true)).join('') : '<div class="empty">近日のタスクはありません。</div>';
 
       const nowKey = `${today}T00:00`;
-      const meetings = state.meetings.filter(m => `${m.date}T${m.time||'00:00'}` >= nowKey).sort((a,b) => `${a.date}T${a.time||'00:00'}`.localeCompare(`${b.date}T${b.time||'00:00'}`)).slice(0,3);
+      const meetings = visibleMeetings().filter(m => `${m.date}T${m.time||'00:00'}` >= nowKey).sort((a,b) => `${a.date}T${a.time||'00:00'}`.localeCompare(`${b.date}T${b.time||'00:00'}`)).slice(0,3);
       document.getElementById('nextMeetings').innerHTML = meetings.length ? meetings.map(m => meetingCardHtml(m,true)).join('') : '<div class="empty">今後のミーティングはありません。</div>';
 
       const upcomingEvents=visibleEvents().map(event=>({event,date:nextEventOccurrence(event,today)})).filter(item=>item.date).sort((a,b)=>`${a.date}T${a.event.time||'99:99'}`.localeCompare(`${b.date}T${b.event.time||'99:99'}`)).slice(0,4).map(item=>({...item.event,date:item.date,_occurrenceDate:item.date}));
@@ -1943,7 +2060,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const category = document.getElementById('meetingCategoryFilter').value;
       const tf = document.getElementById('meetingTimeFilter').value;
       const today = localDateString();
-      const items = state.meetings.filter(m => {
+      const items = visibleMeetings().filter(m => {
         const text = `${m.title} ${m.agenda||''} ${m.decisions||''} ${m.pending||''} ${m.nextActions||''}`.toLowerCase();
         const timeMatch = tf==='all' || (tf==='upcoming' ? m.date>=today : m.date<today);
         return (!q||text.includes(q)) && (category==='all'||m.category===category) && timeMatch;
@@ -1995,7 +2112,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
           const ds = localDateString(d);
           const holiday=japaneseHolidayForDate(ds);
           const tasks = tasksForDate(ds,false);
-          const meetings = state.meetings.filter(m=>m.date===ds);
+          const meetings = visibleMeetings().filter(m=>m.date===ds);
           const events = eventsForDate(ds);
           const datedFuture = visibleFutureItems().filter(item=>item.date===ds);
           html += `<div class="calendar-day ${d.getMonth()!==calendarCursor.getMonth()?'other':''} ${ds===localDateString()?'today':''} ${ds===selectedDate?'selected':''} ${holiday?'holiday':''}" data-date="${ds}" title="Daily Logを開く／Future Logをドロップ">
@@ -2018,7 +2135,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const entry = state.dailyEntries[selectedDate] || {};
       document.getElementById('selectedDateSubtitle').textContent = entry.goal ? `Today's Goal：${entry.goal}` : 'この日の予定と記録';
       const tasks = tasksForDate(selectedDate,true).sort((a,b)=>Number(isDone(a))-Number(isDone(b)));
-      const meetings = state.meetings.filter(m=>m.date===selectedDate).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+      const meetings = visibleMeetings().filter(m=>m.date===selectedDate).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
       const events=eventsForDate(selectedDate);
       const datedFuture=visibleFutureItems().filter(item=>item.date===selectedDate);
       const holiday=japaneseHolidayForDate(selectedDate);
@@ -2316,7 +2433,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const dayEvents=eventsForDate(dailyCursor);
       const holiday=japaneseHolidayForDate(dailyCursor);
       const tasks=tasksForDate(dailyCursor,true).sort((a,b)=>Number(isDone(a))-Number(isDone(b)) || (priorityOrder[a.priority]??999)-(priorityOrder[b.priority]??999));
-      const meetings=state.meetings.filter(m=>m.date===dailyCursor).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+      const meetings=visibleMeetings().filter(m=>m.date===dailyCursor).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
       const futures=visibleFutureItems().filter(item=>item.date===dailyCursor).sort((a,b)=>a.title.localeCompare(b.title,'ja'));
       const dailyEventHtml=`${holiday?holidayCardHtml(dailyCursor,holiday):''}${dayEvents.map(event=>eventCardHtml(event,true)).join('')}`;
       document.getElementById('dailyEvents').innerHTML=dailyEventHtml||'<div class="empty">イベントなし</div>';
@@ -2391,7 +2508,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         const day=addDays(start,index), ds=localDateString(day), name=weekdayShortLabels[day.getDay()];
         const holiday=japaneseHolidayForDate(ds);
         const tasks=tasksForDate(ds,false);
-        const meetings=state.meetings.filter(m=>m.date===ds);
+        const meetings=visibleMeetings().filter(m=>m.date===ds);
         const dayEvents=eventsForDate(ds);
         const futures=visibleFutureItems().filter(f=>f.date===ds);
         const events=[
@@ -2444,9 +2561,11 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     }
     function renderCategoryAdmin() {
       const tree=document.getElementById('categoryAdminTree');if(!tree)return;
-      const owner=canManageTasks();
-      document.getElementById('categoryEditPermission').textContent=owner?'編集可能':'オーナー・運営のみ編集';
+      const owner=canManageCategoryMaster();
+      document.getElementById('categoryEditPermission').textContent=owner?'編集可能':'オーナーのみ編集';
       document.getElementById('addHierarchyCategoryBtn').hidden=!owner;
+      const templateSelect=document.getElementById('categoryTemplateSelect');if(templateSelect)templateSelect.disabled=!owner;
+      const applyTemplate=document.getElementById('applyCategoryTemplateBtn');if(applyTemplate)applyTemplate.hidden=!owner;
       const rows=[];
       const walk=parentId=>{
         categoryChildren(parentId,{activeOnly:false}).forEach(item=>{
@@ -2482,22 +2601,21 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       });
     }
     function applyCategoryTemplate(){
-      if(!canManageTasks())return;
+      if(!canManageCategoryMaster())return;
       const type=document.getElementById('categoryTemplateSelect')?.value;if(!type)return;
+      if(!['simple','normal','detailed'].includes(type)){showToast('カテゴリテンプレートを選択してください');return;}
       if(!confirm('現在の未使用カテゴリをテンプレート構成に置き換えますか？使用中カテゴリは保持されます。'))return;
-      const keep=categoryMasterItems().filter(item=>item.system||categoryUsageCount(item.id));
-      const stamp=Date.now().toString(36).toUpperCase();
-      const major={id:`CAT-TEMPLATE-${stamp}-1`,level:1,parentId:null,name:'大分類',sortOrder:999,active:true};
-      const additions=[major];
-      if(type!=='simple'){
-        const middle={id:`CAT-TEMPLATE-${stamp}-2`,level:2,parentId:major.id,name:'中分類',sortOrder:1,active:true};additions.push(middle);
-        if(type==='detailed')additions.push({id:`CAT-TEMPLATE-${stamp}-3`,level:3,parentId:middle.id,name:'小分類',sortOrder:1,active:true});
-      }
-      state.categoryMaster=[...keep,...additions];saveState('カテゴリテンプレートを適用しました');
+      const retainedIds=categoryMasterItems().filter(item=>item.system||categoryUsageCount(item.id)).map(item=>item.id);
+      if(typeof DOMAIN.buildCategoryHierarchyTemplate!=='function'){showToast('カテゴリテンプレートを読み込めませんでした');return;}
+      state.categoryMaster=DOMAIN.buildCategoryHierarchyTemplate(type,categoryMasterItems(),retainedIds,defaultCategoryMaster()).map(item=>({...item,collapsed:false}));
+      state.adminConfig=state.adminConfig||defaultAdminConfig();
+      state.adminConfig.categoryHierarchyTemplate=type;
+      state.adminConfig.event={...(state.adminConfig.event||{}),categoryHierarchyTemplate:type};
+      saveState(`${document.getElementById('categoryTemplateSelect').selectedOptions[0]?.textContent||'カテゴリ'}テンプレートを適用しました`);
     }
     let draggedCategoryId='';
     function moveCategoryByDrop(sourceId,targetId){
-      if(!canManageTasks()||sourceId===targetId)return;
+      if(!canManageCategoryMaster()||sourceId===targetId)return;
       const source=categoryNode(sourceId),target=categoryNode(targetId);if(!source||!target)return;
       if(source.level===1&&target.level!==1){showToast('大分類は上下の並べ替えのみ可能です');return;}
       if(target.level===3&&source.level!==3){showToast('小分類の中には分類を入れられません');return;}
@@ -2511,14 +2629,14 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     }
     function renderTemplateSettings() {
       const list=document.getElementById('templateSettingsList');if(!list)return;
-      const owner=canManageTasks();
+      const owner=canManageCategoryMaster();
       list.innerHTML=(state.projectTemplates||[]).map(template=>{
         const fieldCount=(template.sections||[]).reduce((sum,section)=>sum+(section.fields||[]).length,0);
         return `<article class="template-setting-card" data-template-id="${escapeHtml(template.id)}"><div><h4>${escapeHtml(template.name)}</h4><p class="panel-sub">${escapeHtml(template.description||'')}</p><div class="template-setting-meta"><span class="tag">${escapeHtml(template.id)}</span><span class="tag">v${template.version}</span><span class="tag">${template.sections?.length||0}セクション</span><span class="tag">${fieldCount}項目</span><span class="tag">${template.generatedTasks?.length||0}初期タスク</span></div></div><label class="preference-toggle"><input class="template-active-toggle" type="checkbox" ${template.active!==false?'checked':''} ${owner?'':'disabled'} /><span><strong>${template.active!==false?'有効':'無効'}</strong><small>${owner?'作成候補を切替':'オーナーのみ変更'}</small></span></label></article>`;
       }).join('')||'<div class="empty">テンプレートがありません。</div>';
     }
     function saveHierarchyCategoryRow(row) {
-      if(!canManageTasks())return;
+      if(!canManageCategoryMaster())return;
       const item=state.categoryMaster.find(category=>category.id===row.dataset.categoryId);if(!item)return;
       const name=row.querySelector('.category-name-input')?.value.trim();
       if(!name){showToast('カテゴリ名を入力してください');return;}
@@ -2530,7 +2648,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       saveState('カテゴリ設定を保存しました');
     }
     function deleteHierarchyCategory(id) {
-      if(!canManageTasks())return;
+      if(!canManageCategoryMaster())return;
       const item=state.categoryMaster.find(category=>category.id===id);if(!item||item.system)return;
       if(categoryUsageCount(id)){showToast('使用中のカテゴリは削除できません。無効化してください');return;}
       if(categoryChildren(id,{activeOnly:false}).length){showToast('子カテゴリがあるため削除できません');return;}
@@ -2539,7 +2657,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       saveState('未使用カテゴリを削除しました');
     }
     function addHierarchyCategory() {
-      if(!canManageTasks())return;
+      if(!canManageCategoryMaster())return;
       const level=Number(prompt('追加する階層を入力してください（1=大、2=中、3=小）','2'));
       if(![1,2,3].includes(level)){showToast('階層は1〜3で指定してください');return;}
       let parentId=null;
@@ -2619,14 +2737,18 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       renderMenuSettings();
       renderCategoryAdmin();
       renderTemplateSettings();
+      if(APP_SURFACE==='app')renderAdminAudit();
       updateThemeControls();
       document.getElementById('weekStartSetting').value=state.preferences.weekStartsOn;
       document.getElementById('showJapaneseHolidaysSetting').checked=state.preferences.showJapaneseHolidays!==false;
       const personalSettings=activeWorkspace!==eventWorkspaceId;
       const categoryPanel=document.getElementById('categoryHierarchyPanel');
-      if(categoryPanel)categoryPanel.hidden=personalSettings;
-      const trashPanel=document.getElementById('trashPanel');if(trashPanel)trashPanel.hidden=personalSettings;
-      const recoveryPanel=document.getElementById('recoveryArchivePanel');if(personalSettings&&recoveryPanel)recoveryPanel.hidden=true;
+      if(categoryPanel)categoryPanel.hidden=APP_SURFACE!=='owner'||personalSettings;
+      const categoryTemplateSelect=document.getElementById('categoryTemplateSelect');
+      if(categoryTemplateSelect)categoryTemplateSelect.value=state.adminConfig?.categoryHierarchyTemplate||state.adminConfig?.event?.categoryHierarchyTemplate||'';
+      const deletionToolsHidden=APP_SURFACE!=='global'||personalSettings;
+      const trashPanel=document.getElementById('trashPanel');if(trashPanel)trashPanel.hidden=deletionToolsHidden;
+      const recoveryPanel=document.getElementById('recoveryArchivePanel');if(deletionToolsHidden&&recoveryPanel)recoveryPanel.hidden=true;
       const categoryOptionsForSetting=(selected='')=>settingItems('categories').filter(item=>!personalSettings||PERSONAL_TASK_CATEGORIES.has(item.value)).map(item=>`<option value="${escapeHtml(item.value)}" ${item.value===selected?'selected':''}>${escapeHtml(item.label)}</option>`).join('');
       const dropdownPanel=document.getElementById('dropdownSettingsPanel');
       if(dropdownPanel)dropdownPanel.hidden=false;
@@ -2671,9 +2793,11 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const settingsView=document.getElementById('settingsView');
       if(!settingsView||settingsView.dataset.settingsReady)return;
       settingsView.dataset.settingsReady='true';
-      const orderedIds=['appearanceSettingsPanel','calendarSettingsPanel','menuSettingsPanel','categoryHierarchyPanel','dropdownSettingsPanel'];
+      const auditPanel=document.getElementById('adminAuditSettingsPanel');
+      if(APP_SURFACE==='app'&&auditPanel&&!settingsView.contains(auditPanel))settingsView.appendChild(auditPanel);
+      const orderedIds=['appearanceSettingsPanel','calendarSettingsPanel','menuSettingsPanel','categoryHierarchyPanel','dropdownSettingsPanel',...(APP_SURFACE==='app'?['adminAuditSettingsPanel']:[])];
       settingsView.prepend(...orderedIds.map(id=>document.getElementById(id)).filter(Boolean));
-      const initiallyClosed=new Set(['appearanceSettingsPanel','calendarSettingsPanel','menuSettingsPanel','dropdownSettingsPanel']);
+      const initiallyClosed=new Set(['appearanceSettingsPanel','calendarSettingsPanel','menuSettingsPanel','dropdownSettingsPanel','adminAuditSettingsPanel']);
       [...settingsView.querySelectorAll(':scope > article.panel')].forEach(panel=>{
         panel.classList.add('settings-section-panel');
         const titleRow=panel.querySelector('.panel-title-row');
@@ -2805,7 +2929,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const staffName=String(window.currentStaffUser?.name||window.currentStaffUser?.displayName||window.currentStaffUser?.email||'').toLowerCase().replace(/^@/,'');
       const meetingPending=(state.meetings||[]).filter(meeting=>{
         if(meeting.responses?.[userKey]||!meeting.notifyAttendees)return false;
-        return staffName&&String(meeting.attendees||'').toLowerCase().split(',').some(name=>name.trim().replace(/^@/,'')===staffName);
+        if((meeting.attendeeUids||[]).includes(userKey))return true;
+        return !(meeting.attendeeUids||[]).length&&staffName&&String(meeting.attendees||'').toLowerCase().split(',').some(name=>name.trim().replace(/^@/,'')===staffName);
       });
       wrap.innerHTML=meetingPending.map(meeting=>`<button class="persistent-notification" type="button" data-open-meeting="${meeting.id}">
         <span class="notification-icon">◎</span><span><small>ミーティング参加のお願い</small><strong>${escapeHtml(meeting.title)}</strong><em>${escapeHtml(dateLabel(meeting.date,false))}${meeting.time?` ${escapeHtml(meeting.time)}`:''}</em></span><span class="notification-arrow">→</span>
@@ -2879,7 +3004,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const members=Object.entries(event.members||{});
       const projects=Object.entries(state.permissionProjects||{}).filter(([,project])=>project.eventId===selectedPermissionEventId);
       const permissionInvites=Object.entries(event.invitations||{});
-      const ownerInvites=(state.adminConfig?.invites||[]).map(invite=>[invite.id,{...invite,uses:invite.used,kind:'event'}]);
+      const ownerInvites=adminInviteRecords().map(invite=>[invite.id,{...invite,uses:invite.used,kind:invite.kind||'event',source:invite.kind==='external'?'publishedInvite':'adminConfig'}]);
       const invites=[...permissionInvites,...ownerInvites.filter(([id])=>!permissionInvites.some(([permissionId])=>permissionId===id))];
       const activeInvites=invites.filter(([,invite])=>invite.active!==false).length;
       document.getElementById('permissionSummary').innerHTML=[
@@ -2929,7 +3054,30 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       }).filter(log=>role==='all'||log.actorRole===role).sort((a,b)=>String(b.timestamp||b.at||'').localeCompare(String(a.timestamp||a.at||''))).slice(0,200);
       host.innerHTML=logs.length?logs.map(log=>`<div class="permission-list-card"><div><strong>${escapeHtml(log.message||log.action||'操作')}</strong><small>${escapeHtml(log.actorName||'不明')}・${escapeHtml(TASK_AUDIENCE_LABELS[log.actorRole]||log.actorRole)}・${escapeHtml(log.timestamp||log.at?new Date(log.timestamp||log.at).toLocaleString('ja-JP'):'日時不明')}</small></div></div>`).join(''):'<div class="empty">操作ログはまだありません。</div>';
     }
-    function inviteUrl(invite){return `${location.origin}/app/?invite=${encodeURIComponent(invite.token)}`;}
+    function inviteUrl(invite){
+      const url=new URL('/app/',location.origin);
+      url.searchParams.set('invite',invite.token);
+      if(invite.kind==='external'&&invite.projectId)url.searchParams.set('project',invite.projectId);
+      return url.toString();
+    }
+    async function updateInviteActive(invite,nextActive,beforeSave=null) {
+      if(!invite)return false;
+      if(invite.kind==='external'){
+        if(typeof window.setProjectInviteActive!=='function'){showToast('Firebaseとの接続後にもう一度お試しください');return false;}
+        try{await window.setProjectInviteActive(invite.token,nextActive);}
+        catch(error){console.error(error);showToast(error.message||'招待リンクを変更できませんでした');return false;}
+        invite.active=nextActive;
+        beforeSave?.();
+        persistStateSilently();
+        renderAll();
+        showToast(nextActive?'招待リンクを再有効化しました':'招待リンクを無効化しました');
+        return true;
+      }
+      invite.active=nextActive;
+      beforeSave?.();
+      saveState(nextActive?'招待リンクを再有効化しました':'招待リンクを無効化しました');
+      return true;
+    }
     async function copyInviteText(text,input){
       try{
         if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(text);
@@ -2947,7 +3095,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     function renderAdminInvites(){
       const host=document.getElementById('adminInviteList');if(!host)return;
       const roleLabels={operations:'運営',staff:'スタッフ',cast:'キャスト',external_collaborator:'外部協力者'};
-      const invites=state.adminConfig?.invites||[];
+      const invites=adminInviteRecords();
       host.innerHTML=invites.length?invites.slice().reverse().map(invite=>`<div class="permission-list-card" data-admin-invite="${escapeHtml(invite.id)}"><div><strong>${escapeHtml(roleLabels[invite.role]||invite.role)}招待</strong><small>期限 ${escapeHtml(invite.expiresAt?new Date(invite.expiresAt).toLocaleString('ja-JP'):'未設定')}・使用 ${Number(invite.used)||0}/${Number(invite.limit)||1}回</small><input value="${escapeHtml(inviteUrl(invite))}" readonly /></div><div class="inline-actions"><button class="btn small admin-invite-copy">コピー</button><button class="btn small admin-invite-toggle">${invite.active===false?'再有効化':'無効化'}</button></div></div>`).join(''):'<div class="empty">発行済みの招待リンクはありません。</div>';
     }
     function adminLinkRow(link={id:uid('link'),label:'',url:'',roles:['owner','operations']}){
@@ -2962,6 +3110,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     }
 
     let globalAdminData={events:{},applications:{},auditLogs:{},trash:{},recovery:{}};
+    window.clearPlannerGlobalAdminData=()=>{globalAdminData={events:{},applications:{},auditLogs:{},trash:{},recovery:{}};};
     const FIXED_EVENT_ID='arasaki-shipyard';
     function ensureFixedGlobalEvent(){
       globalAdminData.events=globalAdminData.events||{};
@@ -3169,10 +3318,12 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     function renderProjectTemplatePreview(templateId=document.getElementById('projectTemplate')?.value||'') {
       const box=document.getElementById('projectTemplatePreview');if(!box)return;
       const template=projectTemplate(templateId);
-      if(!template){box.innerHTML='';populatePhaseSelect('projectPhase',document.getElementById('projectPhase')?.value||'planning');return;}
+      const editing=Boolean(document.getElementById('projectId')?.value);
+      if(!template){box.innerHTML='';populatePhaseSelect('projectPhase',editing?(document.getElementById('projectPhase')?.value||'planning'):'planning');return;}
       const fields=(template.sections||[]).reduce((sum,section)=>sum+(section.fields||[]).length,0);
       box.innerHTML=`<div class="template-preview-head"><div><strong>${escapeHtml(template.name)}</strong><div class="panel-sub">${escapeHtml(template.description||'')}</div></div><span class="tag">v${template.version}</span></div><div class="template-preview-sections">${(template.sections||[]).map(section=>`<span class="template-preview-section">${escapeHtml(section.name)}・${section.fields?.length||0}項目</span>`).join('')}</div><div class="panel-sub" style="margin-top:8px">作成時に ${fields} 項目と ${template.generatedTasks?.length||0} 件の初期タスクをスナップショットとして複製します。</div>`;
-      populatePhaseSelect('projectPhase',document.getElementById('projectPhase')?.value||template.phases?.find(phase=>phase.initial)?.id||template.phases?.[0]?.id||'',false,template.phases||[]);
+      const initialPhase=template.phases?.find(phase=>phase.initial)?.id||template.phases?.[0]?.id||'';
+      populatePhaseSelect('projectPhase',editing?(document.getElementById('projectPhase')?.value||initialPhase):initialPhase,false,template.phases||[]);
     }
     function refreshProjectTemplateChoices(selected='') {
       const selection=hierarchySelection(PROJECT_HIERARCHY_IDS);
@@ -3252,7 +3403,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         content.innerHTML=`<div class="gantt-editor"><div class="gantt-scale"><strong>ガントチャート</strong><span>${escapeHtml(rangeStart)} 〜 ${escapeHtml(rangeEnd)}</span></div>${tasks.length?tasks.map(task=>`<div class="gantt-row" data-gantt-task="${escapeHtml(task.id)}"><div class="gantt-task-name">${escapeHtml(task.title)}</div><label>開始<input class="gantt-task-start" type="date" value="${escapeHtml(task.startDate||task.start||task.due||rangeStart)}" /></label><label>期限<input class="gantt-task-due" type="date" value="${escapeHtml(task.due||rangeEnd)}" /></label><label>フェーズ<select class="gantt-task-phase">${(project.templateSnapshot?.phases||allProjectPhases()).map(phase=>`<option value="${escapeHtml(phase.id)}" ${phase.id===(task.phaseId||project.phaseId)?'selected':''}>${escapeHtml(phase.name)}</option>`).join('')}</select></label></div>`).join(''):'<div class="empty">関連タスクを追加すると、ここで日程を記入できます。</div>'}</div>`;return;
       }
       if(activeProjectDetailTab==='meetings'){
-        const meetings=state.meetings.filter(meeting=>meeting.projectId===project.id);content.innerHTML=meetings.length?meetings.map(meeting=>meetingCardHtml(meeting)).join(''):'<div class="empty">関連会議はありません。</div>';return;
+        const meetings=visibleMeetings().filter(meeting=>meeting.projectId===project.id);content.innerHTML=meetings.length?meetings.map(meeting=>meetingCardHtml(meeting)).join(''):'<div class="empty">関連会議はありません。</div>';return;
       }
       if(activeProjectDetailTab==='deliverables'){
         const urls=project.relatedUrls||[];content.innerHTML=`<div class="project-detail-grid"><section class="project-detail-block"><h4>成果物</h4>${(project.deliverables||[]).length?(project.deliverables||[]).map(item=>`<p>・${escapeHtml(item.name||item)}</p>`).join(''):'<p>未登録</p>'}</section><section class="project-detail-block"><h4>関連URL</h4>${urls.length?urls.map(item=>`<p><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.label||item.url)} ↗</a></p>`).join(''):'<p>未登録</p>'}</section></div>`;return;
@@ -3267,6 +3418,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     function renderProjectDetail(project) {
       if(!project)return;
       const tasks=visibleTasks().filter(task=>task.projectId===project.id),progress=calculateProjectCompletion(project,tasks);
+      const saveButton=document.getElementById('saveProjectDetailBtn');if(saveButton)saveButton.hidden=!canManageTasks();
       document.getElementById('projectDetailId').value=project.id;
       document.getElementById('projectDetailTitle').textContent=project.name;
       document.getElementById('projectDetailHero').innerHTML=`<div><strong>${escapeHtml(project.name)}</strong><div class="project-detail-meta"><span class="tag category-breadcrumb">${categoryPathHtml(project)}</span><span class="tag">${escapeHtml(phaseLabel(project.phaseId))}</span><span class="tag visibility-${normalizeVisibility(project.visibility)}">${escapeHtml(VISIBILITY_LABELS[normalizeVisibility(project.visibility)])}</span>${project.templateId?`<span class="tag">${escapeHtml(projectTemplate(project.templateId)?.name||project.templateId)} v${project.templateVersion||1}</span>`:''}</div>${canManageTasks()?`<button class="btn small project-invite-copy" data-project-invite="${escapeHtml(project.id)}" type="button">外部協力者の招待リンクを発行</button>`:''}</div><div class="project-detail-progress"><strong>${progress.rate}%</strong><span>${progress.completed}/${progress.total} 完了対象</span></div>`;
@@ -3279,7 +3431,14 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       document.getElementById('projectDetailDialog').showModal();
     }
     function saveProjectDetail() {
+      if(!canManageTasks()){showToast('プロジェクト詳細を編集できるのはイベントオーナー・運営のみです');return;}
       const project=state.projects.find(item=>item.id===document.getElementById('projectDetailId').value);if(!project)return;
+      const ganttRows=[...document.querySelectorAll('#projectDetailContent [data-gantt-task]')];
+      const invalidGanttRow=ganttRows.find(row=>{
+        const start=row.querySelector('.gantt-task-start')?.value||'',due=row.querySelector('.gantt-task-due')?.value||'';
+        return start&&due&&due<start;
+      });
+      if(invalidGanttRow){showToast(`「${invalidGanttRow.querySelector('.gantt-task-name')?.textContent||'タスク'}」の期限は開始日以降にしてください`);return;}
       const rangeValues={};
       document.querySelectorAll('#projectDetailContent [data-template-field]').forEach(input=>{
         const id=input.dataset.templateField;
@@ -3292,10 +3451,9 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         const id=input.dataset.templateComplete;project.templateValues[id]={...(project.templateValues[id]||{}),completed:input.checked,completedAt:input.checked?new Date().toISOString():undefined};
       });
       const phase=document.getElementById('projectDetailPhase')?.value;if(phase)project.phaseId=phase;
-      document.querySelectorAll('#projectDetailContent [data-gantt-task]').forEach(row=>{
+      ganttRows.forEach(row=>{
         const task=state.tasks.find(item=>item.id===row.dataset.ganttTask);if(!task)return;
         const start=row.querySelector('.gantt-task-start')?.value||'',due=row.querySelector('.gantt-task-due')?.value||'';
-        if(start&&due&&due<start)return;
         task.startDate=start;task.start=start;task.due=due;task.phaseId=row.querySelector('.gantt-task-phase')?.value||task.phaseId;task.updatedAt=new Date().toISOString();
       });
       project.updatedAt=new Date().toISOString();project.updatedBy=window.currentStaffUser?.name||'';
@@ -3360,7 +3518,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         majorCategoryId:p?.majorCategoryId||preset.majorCategoryId||'',
         middleCategoryId:p?.middleCategoryId||preset.middleCategoryId,
         smallCategoryId:p?.smallCategoryId||preset.smallCategoryId
-      },{activeOnly:true});
+      },{activeOnly:true,requireMiddle:true});
       refreshProjectTemplateChoices(p?.templateId||preset.templateId||'');
       document.getElementById('projectTemplate').disabled=!!p?.templateSnapshot;
       document.getElementById('projectStatus').value=p?.status||'planning';
@@ -3374,7 +3532,9 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       document.getElementById('projectNote').value=p?.note||'';
       refreshProjectSelects();
       document.getElementById('projectOwner').value=p?.ownerUid||preset.ownerUid||'';
-      populatePhaseSelect('projectPhase',p?.phaseId||preset.phaseId||document.getElementById('projectPhase').value||'planning',false,projectTemplate(p?.templateId||preset.templateId)?.phases||allProjectPhases());
+      const selectedTemplate=projectTemplate(p?.templateId||preset.templateId);
+      const initialPhase=p?.phaseId||preset.phaseId||selectedTemplate?.phases?.find(phase=>phase.initial)?.id||selectedTemplate?.phases?.[0]?.id||'planning';
+      populatePhaseSelect('projectPhase',initialPhase,false,selectedTemplate?.phases||allProjectPhases());
       renderProjectTemplatePreview(document.getElementById('projectTemplate').value);
       document.getElementById('projectDialog').showModal();
     }
@@ -3389,8 +3549,13 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       document.getElementById('meetingAttendees').value=m?.attendees||''; document.getElementById('meetingAgenda').value=m?.agenda||'';
       document.getElementById('meetingDecisions').value=m?.decisions||''; document.getElementById('meetingPending').value=m?.pending||'';
       document.getElementById('meetingNextActions').value=m?.nextActions||'';
-      const suggestions=document.getElementById('meetingAttendeeSuggestions');
-      if(suggestions)suggestions.innerHTML=Object.values(window.staffDirectory||{}).map(profile=>`<option value="@${escapeHtml(profile.displayName||profile.name||'')}"></option>`).join('');
+      const attendeeSelect=document.getElementById('meetingAttendeeUids');
+      if(attendeeSelect){
+        const selected=new Set(m?.attendeeUids||[]);
+        attendeeSelect.innerHTML=Object.entries(window.staffDirectory||{}).map(([uidValue,profile])=>`<option value="${escapeHtml(uidValue)}" ${selected.has(uidValue)?'selected':''}>@${escapeHtml(profile.displayName||profile.name||uidValue)}</option>`).join('');
+        const selectedNames=new Set([...attendeeSelect.selectedOptions].map(option=>option.textContent.replace(/^@/,'').trim()));
+        document.getElementById('meetingAttendees').value=String(m?.attendees||'').split(',').map(name=>name.trim()).filter(name=>name&&!selectedNames.has(name)).join(', ');
+      }
       document.getElementById('meetingDialog').showModal();
     }
 
@@ -3676,9 +3841,11 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     });
 
     document.getElementById('projectForm').addEventListener('submit',e=>{
-      e.preventDefault(); const id=document.getElementById('projectId').value; const existing=state.projects.find(p=>p.id===id);
+      e.preventDefault();
+      if(!canManageTasks()){showToast('プロジェクトを編集できるのはイベントオーナー・運営のみです');return;}
+      const id=document.getElementById('projectId').value; const existing=state.projects.find(p=>p.id===id);
       const hierarchy=hierarchySelection(PROJECT_HIERARCHY_IDS);
-      if(!hierarchy.majorCategoryId||!hierarchy.middleCategoryId){showToast('大カテゴリと中カテゴリを選択してください');return;}
+      if(!hierarchy.majorCategoryId||(categoryHierarchyDepth()>=2&&!hierarchy.middleCategoryId)){showToast(categoryHierarchyDepth()>=2?'大カテゴリと中カテゴリを選択してください':'大カテゴリを選択してください');return;}
       const startDate=document.getElementById('projectStart').value,endDate=document.getElementById('projectDue').value;
       if(startDate&&endDate&&endDate<startDate){showToast('終了日は開始日以降にしてください');return;}
       const templateId=existing?.templateId||document.getElementById('projectTemplate').value;
@@ -3692,7 +3859,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const p={ id:projectId,workspaceId:'arasaki-shipyard',managementType:'project', name:document.getElementById('projectName').value.trim(),
         ...hierarchy,classificationStatus:'classified',category:categoryLegacyLabel(hierarchy.majorCategoryId),
         templateId:templateId||'',templateVersion:existing?.templateVersion||(template?.version||undefined),templateSnapshot:existing?.templateSnapshot||(instance?.snapshot||undefined),templateValues:existing?.templateValues||(instance?.values||{}),
-        phaseId:document.getElementById('projectPhase').value||template?.phases?.[0]?.id||'planning',
+        phaseId:document.getElementById('projectPhase').value||template?.phases?.find(phase=>phase.initial)?.id||template?.phases?.[0]?.id||'planning',
         status:document.getElementById('projectStatus').value, start:startDate,due:endDate,startDate,endDate,
         purpose:document.getElementById('projectPurpose').value.trim(),completionCriteria:document.getElementById('projectCompletionCriteria').value.trim(),
         ownerUid:document.getElementById('projectOwner').value||'',memberUids:existing?.memberUids||[],memberNames:document.getElementById('projectMembers').value.split(',').map(value=>value.trim()).filter(Boolean),
@@ -3720,7 +3887,11 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
 
     document.getElementById('meetingForm').addEventListener('submit',e=>{
       e.preventDefault(); const id=document.getElementById('meetingId').value; const existing=state.meetings.find(m=>m.id===id);
-      const m={ id:id||uid('meeting'),workspaceId:eventWorkspaceId, title:document.getElementById('meetingTitle').value.trim(), category:document.getElementById('meetingCategory').value, projectId:document.getElementById('meetingProject').value, date:document.getElementById('meetingDate').value, time:document.getElementById('meetingTime').value, attendees:document.getElementById('meetingAttendees').value.trim(),notifyAttendees:true, responses:{...(existing?.responses||{})}, agenda:document.getElementById('meetingAgenda').value.trim(), decisions:document.getElementById('meetingDecisions').value.trim(), pending:document.getElementById('meetingPending').value.trim(), nextActions:document.getElementById('meetingNextActions').value.trim(), createdAt:existing?.createdAt||new Date().toISOString() };
+      const attendeeSelect=document.getElementById('meetingAttendeeUids');
+      const attendeeUids=[...attendeeSelect.selectedOptions].map(option=>option.value);
+      const mentionedNames=[...attendeeSelect.selectedOptions].map(option=>option.textContent.replace(/^@/,'').trim()).filter(Boolean);
+      const otherNames=document.getElementById('meetingAttendees').value.split(',').map(name=>name.trim()).filter(Boolean);
+      const m={ id:id||uid('meeting'),workspaceId:eventWorkspaceId, title:document.getElementById('meetingTitle').value.trim(), category:document.getElementById('meetingCategory').value, projectId:document.getElementById('meetingProject').value, date:document.getElementById('meetingDate').value, time:document.getElementById('meetingTime').value, attendeeUids,attendees:[...new Set([...mentionedNames,...otherNames])].join(', '),notifyAttendees:true, responses:{...(existing?.responses||{})}, agenda:document.getElementById('meetingAgenda').value.trim(), decisions:document.getElementById('meetingDecisions').value.trim(), pending:document.getElementById('meetingPending').value.trim(), nextActions:document.getElementById('meetingNextActions').value.trim(), createdAt:existing?.createdAt||new Date().toISOString() };
       if(!m.title||!m.date)return; if(existing)Object.assign(existing,m); else state.meetings.push(m);
       document.getElementById('meetingDialog').close(); saveState(existing?'ミーティングを更新しました':'ミーティングを追加しました');
     });
@@ -3946,12 +4117,12 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         const expiresAt=document.getElementById('adminInviteExpiry').value,limit=Math.max(1,Number(document.getElementById('adminInviteLimit').value)||1);
         if(!expiresAt){showToast('招待リンクの期限を指定してください');return;}
         state.adminConfig=state.adminConfig||defaultAdminConfig();state.adminConfig.invites=Array.isArray(state.adminConfig.invites)?state.adminConfig.invites:[];
-        state.adminConfig.invites.push({id:uid('invite'),token:`${Date.now().toString(36)}${Math.random().toString(36).slice(2,12)}`,role:document.getElementById('adminInviteRole').value,expiresAt:new Date(expiresAt).toISOString(),limit,used:0,active:true,createdAt:new Date().toISOString(),createdBy:window.currentStaffUser?.uid||''});
+        state.adminConfig.invites.push({id:uid('invite'),token:secureInviteToken(),role:document.getElementById('adminInviteRole').value,expiresAt:new Date(expiresAt).toISOString(),limit,used:0,active:true,createdAt:new Date().toISOString(),createdBy:window.currentStaffUser?.uid||''});
         saveState('招待リンクを発行しました');return;
       }
       const adminInvite=e.target.closest('[data-admin-invite]');
-      if(adminInvite&&e.target.closest('.admin-invite-copy')){const invite=(state.adminConfig?.invites||[]).find(item=>item.id===adminInvite.dataset.adminInvite);if(invite)copyInviteText(inviteUrl(invite),adminInvite.querySelector('input'));return;}
-      if(adminInvite&&e.target.closest('.admin-invite-toggle')){const invite=(state.adminConfig?.invites||[]).find(item=>item.id===adminInvite.dataset.adminInvite);if(invite){invite.active=invite.active===false;saveState(invite.active?'招待リンクを再有効化しました':'招待リンクを無効化しました');}return;}
+      if(adminInvite&&e.target.closest('.admin-invite-copy')){const invite=adminInviteRecords().find(item=>item.id===adminInvite.dataset.adminInvite);if(invite)copyInviteText(inviteUrl(invite),adminInvite.querySelector('input'));return;}
+      if(adminInvite&&e.target.closest('.admin-invite-toggle')){const invite=adminInviteRecords().find(item=>item.id===adminInvite.dataset.adminInvite);if(invite)await updateInviteActive(invite,invite.active===false);return;}
       if(e.target.id==='addAdminDataLinkBtn'){document.getElementById('adminDataLinkRows')?.insertAdjacentHTML('beforeend',adminLinkRow());return;}
       if(e.target.closest('.admin-link-delete')){e.target.closest('.admin-data-link-row')?.remove();return;}
       if(e.target.id==='saveAdminDataLinksBtn'){
@@ -3980,8 +4151,12 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       if(archiveRow&&e.target.closest('.archive-restore')&&canManageTasks()){restoreTrashItem(archiveRow.dataset.archiveId,true);return;}
       const inviteToggle=e.target.closest('.permission-invite-toggle');
       if(inviteToggle){
-        const invite=state.permissionEvents?.[selectedPermissionEventId]?.invitations?.[inviteToggle.dataset.inviteId];
-        if(invite){invite.active=invite.active===false;permissionAudit(invite.active?'enable':'disable','invitation',inviteToggle.dataset.inviteId,invite.active?'招待リンクを再有効化':'招待リンクを無効化');saveState(invite.active?'招待リンクを再有効化しました':'招待リンクを無効化しました');}return;
+        const invite=state.permissionEvents?.[selectedPermissionEventId]?.invitations?.[inviteToggle.dataset.inviteId]
+          ||adminInviteRecords().find(item=>item.id===inviteToggle.dataset.inviteId);
+        if(invite){
+          const nextActive=invite.active===false;
+          await updateInviteActive(invite,nextActive,()=>permissionAudit(nextActive?'enable':'disable','invitation',inviteToggle.dataset.inviteId,nextActive?'招待リンクを再有効化':'招待リンクを無効化'));
+        }return;
       }
       const projectDetailTab=e.target.closest('[data-project-detail-tab]');
       if(projectDetailTab){activeProjectDetailTab=projectDetailTab.dataset.projectDetailTab;const project=state.projects.find(item=>item.id===document.getElementById('projectDetailId').value);if(project)renderProjectDetail(project);return;}
@@ -4059,12 +4234,27 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const projectInvite=e.target.closest('.project-invite-copy');
       if(projectInvite){
         const project=state.projects.find(item=>item.id===projectInvite.dataset.projectInvite);if(!project)return;
-        const token=`${Date.now().toString(36)}${Math.random().toString(36).slice(2,12)}`,createdAt=new Date().toISOString();
-        const invite={id:uid('invite'),token,role:'external_collaborator',kind:'external',projectId:project.id,expiresAt:new Date(Date.now()+30*86400000).toISOString(),limit:20,used:0,active:true,createdAt,createdBy:window.currentStaffUser?.uid||''};
-        project.externalInvite=invite;state.adminConfig=state.adminConfig||defaultAdminConfig();state.adminConfig.invites=Array.isArray(state.adminConfig.invites)?state.adminConfig.invites:[];state.adminConfig.invites.push(invite);
+        const token=secureInviteToken(),createdAt=new Date().toISOString();
+        const invite={id:uid('invite'),token,eventId:eventWorkspaceId,teamId:eventWorkspaceId,role:'external_collaborator',kind:'external',projectId:project.id,projectVisibility:normalizeVisibility(project.visibility),expiresAt:new Date(Date.now()+30*86400000).toISOString(),limit:20,used:0,active:true,createdAt,createdBy:window.currentStaffUser?.uid||''};
         const url=new URL('/app/',location.origin);url.searchParams.set('invite',token);url.searchParams.set('project',project.id);
-        navigator.clipboard?.writeText(url.toString()).then(()=>showToast('外部協力者用の招待リンクをコピーしました')).catch(()=>prompt('この招待リンクをコピーしてください',url.toString()));
-        persistStateSilently();return;
+        if(typeof window.publishProjectInvite!=='function'){
+          showToast('Firebaseとの接続後にもう一度お試しください');return;
+        }
+        projectInvite.disabled=true;
+        try{
+          await window.publishProjectInvite(invite);
+          try{
+            if(!navigator.clipboard?.writeText)throw new Error('clipboard unavailable');
+            await navigator.clipboard.writeText(url.toString());
+            showToast('外部協力者用の招待リンクをコピーしました');
+          }catch(copyError){
+            console.info('クリップボードへ自動コピーできませんでした',copyError);
+            prompt('招待リンクを発行しました。下記URLをコピーしてください',url.toString());
+          }
+        }catch(error){
+          console.error(error);showToast(error.message||'招待リンクをFirebaseへ登録できませんでした');
+        }finally{projectInvite.disabled=false;}
+        return;
       }
       const scheduleChoice=e.target.closest('.schedule-choice');
       if(scheduleChoice){

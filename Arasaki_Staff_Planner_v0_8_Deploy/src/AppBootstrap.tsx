@@ -9,7 +9,7 @@ window.ARASAKI_PLANNER_DOMAIN = plannerDomain;
 
 function runtimeAsset(fileName: string): string {
   const url = new URL(`assets/js/${fileName}`, `${window.location.origin}${import.meta.env.BASE_URL}`);
-  url.searchParams.set('v', '0.9.9');
+  url.searchParams.set('v', '0.9.10');
   return url.href;
 }
 

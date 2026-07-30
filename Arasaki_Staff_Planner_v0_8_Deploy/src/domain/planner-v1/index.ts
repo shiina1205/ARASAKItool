@@ -6,6 +6,7 @@ export * from './migration.ts';
 export * from './filters.ts';
 export * from './progress.ts';
 export * from './access-control.ts';
+export * from './surface-access.ts';
 
 import {
   INITIAL_CATEGORY_MASTER,
