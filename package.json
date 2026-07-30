@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types tests/*.test.ts",
+    "check:legacy": "node --check Arasaki_Staff_Planner_v0_8_Deploy/assets/js/app-v0.8.js && node --check Arasaki_Staff_Planner_v0_8_Deploy/assets/js/firebase-v0.8.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.4.1",
