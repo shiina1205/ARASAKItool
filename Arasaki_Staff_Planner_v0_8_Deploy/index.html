@@ -8,7 +8,7 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Staff Planner｜荒嵜造船所</title>
-  <link rel="stylesheet" href="/assets/css/app-v0.8.css?v=0.9.8" />
+  <link rel="stylesheet" href="/assets/css/app-v0.8.css?v=0.9.10" />
   <script type="module" src="/assets/js/theme-init-v0.8.js?v=0.9.7"></script>
 </head>
 <body>
@@ -48,7 +48,7 @@
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">✦</div>
-        <div><h1>Staff Planner</h1><p>荒嵜造船所のワークスペース</p></div>
+        <div><h1>Staff Planner</h1><p>イベントのためのワークスペース</p></div>
       </div>
       <div id="sidebarNavContainer"></div>
       <button class="nav-button menu-settings-shortcut" data-view="settings"><span class="nav-icon">⚙</span>設定</button>
@@ -353,16 +353,16 @@
           <div class="panel-title-row"><div><h3 id="taskListHeading">タスク一覧</h3><div class="panel-sub" id="taskCountText">0件</div><div class="role-access-note" id="taskListAccessNote"></div></div><button class="btn primary small task-create-control" id="newTaskBtn2">＋ 新規タスク</button></div>
           <div class="filters">
             <div class="field search-field"><label>検索</label><input id="taskSearch" placeholder="タイトル・メモを検索" /></div>
-            <select id="categoryFilter" hidden><option value="all">すべて</option></select>
-            <div class="field"><label>大カテゴリ</label><select id="taskMajorFilter"><option value="all">すべて</option></select></div>
-            <div class="field"><label>中カテゴリ</label><select id="taskMiddleFilter"><option value="all">すべて</option></select></div>
-            <div class="field"><label>小カテゴリ</label><select id="taskSmallFilter"><option value="all">すべて</option></select></div>
+            <div class="field" id="taskPersonalCategoryFilterField" hidden><label>個人用カテゴリ</label><select id="categoryFilter"><option value="all">すべて</option></select></div>
+            <div class="field" id="taskMajorFilterField"><label>大カテゴリ</label><select id="taskMajorFilter"><option value="all">すべて</option></select></div>
+            <div class="field" id="taskMiddleFilterField"><label>中カテゴリ</label><select id="taskMiddleFilter"><option value="all">すべて</option></select></div>
+            <div class="field" id="taskSmallFilterField"><label>小カテゴリ</label><select id="taskSmallFilter"><option value="all">すべて</option></select></div>
             <div class="field"><label>管理単位</label><select id="taskManagementFilter"><option value="all">すべて</option></select></div>
             <div class="field"><label>プロジェクト</label><select id="taskProjectFilter"><option value="all">すべて</option></select></div>
             <div class="field"><label>フェーズ</label><select id="taskPhaseFilter"><option value="all">すべて</option></select></div>
             <div class="field"><label>状態</label><select id="statusFilter"><option value="open">未完了</option><option value="all">すべて</option><option value="inbox">Inbox</option><option value="todo">未着手</option><option value="doing">進行中</option><option value="waiting">待機中</option><option value="done">完了</option><option value="today">今日が期限</option><option value="overdue">期限切れ</option></select></div>
             <div class="field"><label>優先度</label><select id="priorityFilter"><option value="all">すべて</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></div>
-            <div class="field"><label>種類</label><select id="typeFilter"><option value="all">すべて</option><option>制作</option><option>企画</option><option>運営</option><option>連絡・確認</option><option>ミーティング</option><option>イベント運営</option><option>SNS・告知</option><option>採用・面談</option><option>資料作成</option><option>家事・生活</option><option>学習</option><option>その他</option></select></div>
+            <div class="field" id="taskPersonalTypeFilterField" hidden><label>種類</label><select id="typeFilter"><option value="all">すべて</option><option>制作</option><option>企画</option><option>運営</option><option>連絡・確認</option><option>ミーティング</option><option>イベント運営</option><option>SNS・告知</option><option>採用・面談</option><option>資料作成</option><option>家事・生活</option><option>学習</option><option>その他</option></select></div>
             <div class="field"><label>担当者</label><select id="taskAssigneeFilter"><option value="all">すべて</option></select></div>
             <div class="field"><label>確認担当</label><select id="taskReviewerFilter"><option value="all">すべて</option></select></div>
             <div class="field"><label>公開範囲</label><select id="taskVisibilityFilter"><option value="all">すべて</option></select></div>
@@ -514,7 +514,7 @@
       </section>
 
       <section class="view owner-admin-view" id="adminAuditView">
-        <article class="panel">
+        <article class="panel" id="adminAuditSettingsPanel">
           <div class="panel-title-row"><div><div class="eyebrow">Operation Log</div><h3>操作ログ</h3><div class="panel-sub">全ロールの操作内容・操作者・日時を確認できます。</div></div><select id="adminAuditRole"><option value="all">すべてのロール</option><option value="owner">イベントオーナー</option><option value="operations">運営</option><option value="staff">スタッフ</option><option value="cast">キャスト</option><option value="external_collaborator">外部協力者</option></select></div>
           <div id="adminAuditList" class="permission-card-list"></div>
         </article>
@@ -524,7 +524,7 @@
         <article class="panel">
           <div class="panel-title-row"><div><div class="eyebrow">Invitation</div><h3>招待リンク発行</h3><div class="panel-sub">ロール、期限、使用回数を指定して招待リンクを発行します。</div></div></div>
           <div class="form-grid">
-            <label class="field"><span>招待ロール</span><select id="adminInviteRole"><option value="operations">運営</option><option value="staff">スタッフ</option><option value="cast">キャスト</option><option value="external_collaborator">外部協力者</option></select></label>
+            <label class="field"><span>招待ロール</span><select id="adminInviteRole"><option value="operations">運営</option><option value="staff">スタッフ</option><option value="cast">キャスト</option></select></label>
             <label class="field"><span>期限</span><input id="adminInviteExpiry" type="datetime-local" /></label>
             <label class="field"><span>使用回数</span><input id="adminInviteLimit" type="number" min="1" value="1" /></label>
           </div>
@@ -794,7 +794,7 @@
           <div class="field span-2"><label>プロジェクト名</label><input id="projectName" required placeholder="例：荒嵜造船所イベント制作" /></div>
           <div class="hierarchy-fields span-2">
             <div class="field"><label>大カテゴリ</label><select id="projectMajorCategory" required></select></div>
-            <div class="field"><label>中カテゴリ</label><select id="projectMiddleCategory" required></select></div>
+            <div class="field"><label>中カテゴリ</label><select id="projectMiddleCategory"></select></div>
             <div class="field"><label>小カテゴリ（任意）</label><select id="projectSmallCategory"></select></div>
           </div>
           <div class="field"><label>テンプレート（任意）</label><select id="projectTemplate"><option value="">テンプレートなし</option></select></div>
@@ -839,7 +839,8 @@
           <div class="field"><label>プロジェクト</label><select id="meetingProject"><option value="">紐づけなし</option></select></div>
           <div class="field"><label>日付</label><input type="date" id="meetingDate" required /></div>
           <div class="field"><label>時間</label><input type="time" id="meetingTime" /></div>
-          <div class="field span-2"><label>参加者（個別に出欠依頼）</label><input id="meetingAttendees" list="meetingAttendeeSuggestions" placeholder="@スタッフ名 をカンマ区切りで入力" /><datalist id="meetingAttendeeSuggestions"></datalist><div class="panel-sub">登録スタッフは @名前 でメンションできます。作成時、対象者の画面へ参加依頼を通知します。</div></div>
+          <div class="field span-2"><label>参加者（登録スタッフをメンション）</label><select id="meetingAttendeeUids" multiple size="4" aria-label="参加を依頼する登録スタッフ"></select><div class="panel-sub">Ctrl／⌘キーを押しながら複数選択できます。選択したアカウントへ参加依頼を通知します。</div></div>
+          <div class="field span-2"><label>その他の参加者</label><input id="meetingAttendees" placeholder="未登録の参加者名をカンマ区切りで入力" /></div>
           <div class="field span-2"><label>議題</label><textarea id="meetingAgenda"></textarea></div>
           <div class="field span-2"><label>決定事項</label><textarea id="meetingDecisions"></textarea></div>
           <div class="field span-2"><label>保留・確認事項</label><textarea id="meetingPending"></textarea></div>

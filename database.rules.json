@@ -31,50 +31,154 @@
           ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
           "$uid": {
             ".read": "auth != null && auth.uid === $uid",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && ((root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' && ($uid !== auth.uid || (newData.exists() && newData.child('role').val() === 'owner' && newData.child('active').val() === true))) || ((root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin') && (!data.exists() || (data.child('role').val() !== 'owner' && data.child('role').val() !== 'operations' && data.child('role').val() !== 'admin')) && (!newData.exists() || newData.child('role').val() === 'staff' || newData.child('role').val() === 'cast' || newData.child('role').val() === 'member' || newData.child('role').val() === 'viewer')))",
-            ".validate": "!newData.exists() || (newData.hasChildren(['displayName','role','active']) && newData.child('displayName').isString() && newData.child('displayName').val().length > 0 && newData.child('displayName').val().length <= 60 && (newData.child('role').val() === 'owner' || newData.child('role').val() === 'operations' || newData.child('role').val() === 'staff' || newData.child('role').val() === 'cast' || newData.child('role').val() === 'admin' || newData.child('role').val() === 'member' || newData.child('role').val() === 'viewer') && newData.child('active').isBoolean() && (!newData.child('email').exists() || (newData.child('email').isString() && newData.child('email').val().length <= 254)))"
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && ((root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' && ($uid !== auth.uid || (newData.exists() && newData.child('role').val() === 'owner' && newData.child('active').val() === true))) || ((root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin') && (!data.exists() || (data.child('role').val() !== 'owner' && data.child('role').val() !== 'operations' && data.child('role').val() !== 'admin')) && (!newData.exists() || newData.child('role').val() === 'staff' || newData.child('role').val() === 'cast' || newData.child('role').val() === 'external_collaborator' || newData.child('role').val() === 'member' || newData.child('role').val() === 'viewer')))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['displayName','role','active']) && newData.child('displayName').isString() && newData.child('displayName').val().length > 0 && newData.child('displayName').val().length <= 60 && (newData.child('role').val() === 'owner' || newData.child('role').val() === 'operations' || newData.child('role').val() === 'staff' || newData.child('role').val() === 'cast' || newData.child('role').val() === 'external_collaborator' || newData.child('role').val() === 'admin' || newData.child('role').val() === 'member' || newData.child('role').val() === 'viewer') && newData.child('active').isBoolean() && (!newData.child('email').exists() || (newData.child('email').isString() && newData.child('email').val().length <= 254)) && ((data.exists() && newData.child('approvalClaimId').val() === data.child('approvalClaimId').val()) || (newData.child('approvalClaimId').isString() && newData.child('approvalClaimId').val().length >= 8 && newData.child('approvalClaimId').val().length <= 200 && root.child('teams').child($teamId).child('joinRequests').child($uid).child('status').val() === 'pending' && root.child('teams').child($teamId).child('joinRequests').child($uid).child('reviewClaim').child('id').val() === newData.child('approvalClaimId').val() && root.child('teams').child($teamId).child('joinRequests').child($uid).child('reviewClaim').child('action').val() === 'approve' && root.child('teams').child($teamId).child('joinRequests').child($uid).child('reviewClaim').child('phase').val() === 'committing')) && (newData.child('role').val() !== 'external_collaborator' || (data.exists() && data.child('role').val() === 'external_collaborator' && newData.child('approvalClaimId').val() === data.child('approvalClaimId').val()) || (newData.child('approvalClaimId').isString() && root.child('teams').child($teamId).child('joinRequests').child($uid).child('status').val() === 'pending' && root.child('teams').child($teamId).child('joinRequests').child($uid).child('reviewClaim').child('id').val() === newData.child('approvalClaimId').val() && root.child('teams').child($teamId).child('joinRequests').child($uid).child('reviewClaim').child('action').val() === 'approve' && root.child('teams').child($teamId).child('joinRequests').child($uid).child('reviewClaim').child('phase').val() === 'committing' && root.child('teams').child($teamId).child('joinRequests').child($uid).child('projectId').isString() && newData.child('projectAccess').child(root.child('teams').child($teamId).child('joinRequests').child($uid).child('projectId').val()).val() === true)))",
+            "approvalClaimId": {
+              ".validate": "!newData.exists() || (newData.isString() && newData.val().length >= 8 && newData.val().length <= 200)"
+            },
+            "projectAccess": {
+              "$projectId": {
+                ".validate": "newData.isBoolean() && newData.val() === true"
+              }
+            }
           }
         },
         "profiles": {
-          ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+          ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
           "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
             ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && ((auth.uid === $uid && newData.exists() && newData.child('displayName').val() === root.child('teams').child($teamId).child('members').child(auth.uid).child('displayName').val() && (newData.child('role').val() === root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() || (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin' && newData.child('role').val() === 'operations') || (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'member' && newData.child('role').val() === 'staff') || (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'viewer' && newData.child('role').val() === 'cast')) && newData.child('active').val() === root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val()) || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || ((root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin') && data.child('role').val() !== 'owner' && data.child('role').val() !== 'operations' && data.child('role').val() !== 'admin'))",
-            ".validate": "!newData.exists() || (newData.hasChildren(['displayName','role','active','discord','vrchat']) && newData.child('displayName').isString() && newData.child('displayName').val().length > 0 && newData.child('displayName').val().length <= 60 && (newData.child('role').val() === 'owner' || newData.child('role').val() === 'operations' || newData.child('role').val() === 'staff' || newData.child('role').val() === 'cast' || newData.child('role').val() === 'admin' || newData.child('role').val() === 'member' || newData.child('role').val() === 'viewer') && newData.child('active').isBoolean() && newData.child('discord').isString() && newData.child('discord').val().length <= 100 && newData.child('vrchat').isString() && newData.child('vrchat').val().length <= 300 && (!newData.child('photoURL').exists() || (newData.child('photoURL').isString() && newData.child('photoURL').val().length <= 2048)))"
+            ".validate": "!newData.exists() || (newData.hasChildren(['displayName','role','active','discord','vrchat']) && newData.child('displayName').isString() && newData.child('displayName').val().length > 0 && newData.child('displayName').val().length <= 60 && (newData.child('role').val() === 'owner' || newData.child('role').val() === 'operations' || newData.child('role').val() === 'staff' || newData.child('role').val() === 'cast' || newData.child('role').val() === 'external_collaborator' || newData.child('role').val() === 'admin' || newData.child('role').val() === 'member' || newData.child('role').val() === 'viewer') && newData.child('active').isBoolean() && newData.child('discord').isString() && newData.child('discord').val().length <= 100 && newData.child('vrchat').isString() && newData.child('vrchat').val().length <= 300 && (!newData.child('photoURL').exists() || (newData.child('photoURL').isString() && newData.child('photoURL').val().length <= 2048)))"
           }
         },
         "joinRequests": {
           ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
           "$uid": {
             ".read": "auth != null && auth.uid === $uid",
-            ".write": "auth != null && ((root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')) || (auth.uid === $uid && !root.child('teams').child($teamId).child('members').child($uid).exists() && newData.exists() && newData.child('uid').val() === auth.uid && newData.child('email').val() === auth.token.email && newData.child('status').val() === 'pending'))",
-            ".validate": "!newData.exists() || (newData.hasChildren(['uid','displayName','email','status']) && newData.child('uid').val() === $uid && newData.child('displayName').isString() && newData.child('displayName').val().length > 0 && newData.child('displayName').val().length <= 60 && newData.child('email').isString() && newData.child('email').val().length <= 254 && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'rejected'))"
+            ".write": "auth != null && ((root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')) || (auth.uid === $uid && newData.exists() && newData.child('uid').val() === auth.uid && newData.child('email').val() === auth.token.email && newData.child('status').val() === 'pending' && (!root.child('teams').child($teamId).child('members').child($uid).exists() || (root.child('teams').child($teamId).child('members').child($uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child($uid).child('role').val() === 'external_collaborator' && newData.child('requestedRole').val() === 'external_collaborator' && newData.child('inviteKind').val() === 'external' && newData.child('teamId').val() === $teamId && newData.child('eventId').val() === $teamId && newData.child('invitationToken').isString() && newData.child('invitationToken').val().length >= 12 && newData.child('invitationToken').val().length <= 200 && newData.child('projectId').isString() && newData.child('projectId').val().length > 0 && newData.child('projectId').val().length <= 200 && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('token').val() === newData.child('invitationToken').val() && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('active').val() === true && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('role').val() === 'external_collaborator' && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('kind').val() === 'external' && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('teamId').val() === $teamId && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('eventId').val() === $teamId && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('projectId').val() === newData.child('projectId').val() && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('projectVisibility').val() === newData.child('projectVisibility').val() && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('expiresAt').val() >= now && root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('used').val() < root.child('teams').child($teamId).child('invites').child(newData.child('invitationToken').val()).child('limit').val() && root.child('teams').child($teamId).child('members').child($uid).child('projectAccess').child(newData.child('projectId').val()).val() !== true))))",
+            ".validate": "!newData.exists() || (newData.hasChildren(['uid','displayName','email','status']) && newData.child('uid').val() === $uid && newData.child('displayName').isString() && newData.child('displayName').val().length > 0 && newData.child('displayName').val().length <= 60 && newData.child('email').isString() && newData.child('email').val().length <= 254 && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'rejected') && ((root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')) || !data.child('reviewClaim').exists()) && (!newData.child('reviewClaim').exists() || (newData.child('status').val() === 'pending' && newData.child('reviewClaim').child('uid').val() === auth.uid && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin'))))",
+            "reviewClaim": {
+              ".validate": "!newData.exists() || (newData.hasChildren(['id','uid','action','phase','at']) && newData.child('id').isString() && newData.child('id').val().length >= 8 && newData.child('id').val().length <= 200 && newData.child('uid').isString() && newData.child('uid').val().length > 0 && newData.child('uid').val().length <= 128 && (newData.child('action').val() === 'approve' || newData.child('action').val() === 'reject') && (newData.child('phase').val() === 'reviewing' || (newData.child('action').val() === 'approve' && newData.child('phase').val() === 'committing' && newData.child('commitStartedAt').isNumber() && newData.child('commitStartedAt').val() > 0) || (newData.child('phase').val() === 'canceling' && newData.child('cancelStartedAt').isNumber() && newData.child('cancelStartedAt').val() > 0)) && newData.child('at').isNumber() && newData.child('at').val() > 0 && ((newData.child('action').val() === 'approve' && (newData.child('role').val() === 'owner' || newData.child('role').val() === 'operations' || newData.child('role').val() === 'staff' || newData.child('role').val() === 'cast' || newData.child('role').val() === 'external_collaborator')) || (newData.child('action').val() === 'reject' && !newData.child('role').exists())))",
+              "id": {
+                ".validate": "newData.isString() && newData.val().length >= 8 && newData.val().length <= 200"
+              },
+              "uid": {
+                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128"
+              },
+              "action": {
+                ".validate": "newData.val() === 'approve' || newData.val() === 'reject'"
+              },
+              "phase": {
+                ".validate": "newData.val() === 'reviewing' || newData.val() === 'committing' || newData.val() === 'canceling'"
+              },
+              "at": {
+                ".validate": "newData.isNumber() && newData.val() > 0"
+              },
+              "commitStartedAt": {
+                ".validate": "newData.isNumber() && newData.val() > 0"
+              },
+              "cancelStartedAt": {
+                ".validate": "newData.isNumber() && newData.val() > 0"
+              },
+              "role": {
+                ".validate": "newData.val() === 'owner' || newData.val() === 'operations' || newData.val() === 'staff' || newData.val() === 'cast' || newData.val() === 'external_collaborator'"
+              },
+              "inviteClaimHash": {
+                ".validate": "newData.isString() && newData.val().length === 64"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
+          }
+        },
+        "invites": {
+          ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
+          "$token": {
+            ".read": "auth != null",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
+            ".validate": "!newData.exists() || (newData.hasChildren(['id','token','eventId','teamId','role','kind','projectId','projectVisibility','expiresAt','limit','used','active','createdAt','createdBy','claimHashes']) && newData.child('token').val() === $token && newData.child('eventId').val() === $teamId && newData.child('teamId').val() === $teamId && newData.child('role').val() === 'external_collaborator' && newData.child('kind').val() === 'external' && (newData.child('projectVisibility').val() === 'owner' || newData.child('projectVisibility').val() === 'operations' || newData.child('projectVisibility').val() === 'staff' || newData.child('projectVisibility').val() === 'cast') && newData.child('expiresAt').isNumber() && newData.child('createdAt').isNumber() && newData.child('expiresAt').val() > newData.child('createdAt').val() && newData.child('limit').isNumber() && newData.child('limit').val() >= 1 && newData.child('limit').val() <= 100 && newData.child('used').isNumber() && newData.child('used').val() >= 0 && newData.child('used').val() <= newData.child('limit').val() && newData.child('claimHashes').child('_seed').val() === true && newData.child('active').isBoolean() && ((!data.exists() && newData.child('createdBy').val() === auth.uid) || (data.exists() && newData.child('createdBy').val() === data.child('createdBy').val())))",
+            "id": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
+            },
+            "token": {
+              ".validate": "newData.isString() && newData.val() === $token && newData.val().length >= 12 && newData.val().length <= 200"
+            },
+            "eventId": {
+              ".validate": "newData.isString() && newData.val() === $teamId"
+            },
+            "teamId": {
+              ".validate": "newData.isString() && newData.val() === $teamId"
+            },
+            "role": {
+              ".validate": "newData.isString() && newData.val() === 'external_collaborator'"
+            },
+            "kind": {
+              ".validate": "newData.isString() && newData.val() === 'external'"
+            },
+            "projectId": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+            },
+            "projectVisibility": {
+              ".validate": "newData.isString() && (newData.val() === 'owner' || newData.val() === 'operations' || newData.val() === 'staff' || newData.val() === 'cast')"
+            },
+            "expiresAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "limit": {
+              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 100"
+            },
+            "used": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            },
+            "active": {
+              ".validate": "newData.isBoolean()"
+            },
+            "createdAt": {
+              ".validate": "newData.isNumber() && newData.val() > 0"
+            },
+            "createdBy": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128 && ((!data.exists() && newData.val() === auth.uid) || (data.exists() && newData.val() === data.val()))"
+            },
+            "claimHashes": {
+              ".validate": "newData.hasChild('_seed') && newData.child('_seed').val() === true",
+              "_seed": {
+                ".validate": "newData.isBoolean() && newData.val() === true"
+              },
+              "$hash": {
+                ".validate": "newData.isBoolean() && newData.val() === true"
+              }
+            },
+            "$other": {
+              ".validate": false
+            }
           }
         },
         "planner": {
-          ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+          ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
           ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')"
         },
         "workspace": {
           "meta": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
             "schemaVersion": {
               ".write": "auth != null && newData.exists() && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
               ".validate": "newData.isNumber() && newData.val() === 3"
             },
             "appVersion": {
-              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               ".validate": "newData.isNumber() && newData.val() >= 100"
             },
             "updatedAt": {
-              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               ".validate": "newData.isNumber() && newData.val() <= now"
             },
             "updatedBy": {
-              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               ".validate": "newData.isString() && newData.val().length <= 254"
             },
             "updatedByUid": {
-              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && newData.val() === auth.uid",
+              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator' && newData.val() === auth.uid",
               ".validate": "newData.isString()"
             },
             "categoryMigrationVersion": {
@@ -98,28 +202,36 @@
             }
           },
           "config": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
             "settings": {
+              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
               ".validate": "newData.hasChildren()"
             },
             "preferences": {
+              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
               ".validate": "newData.hasChildren()"
             },
             "menuConfig": {
+              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
               ".validate": "newData.hasChildren()"
             },
             "adminConfig": {
+              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
               ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
-              ".validate": "newData.hasChildren(['event','invites','links'])"
+              ".validate": "newData.hasChildren(['event','invites','links'])",
+              "event": {
+                ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'"
+              }
             },
             "categoryMaster": {
+              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               ".write": "auth != null && newData.exists() && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner'",
               ".validate": "newData.hasChildren()"
             },
             "projectTemplates": {
+              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               ".write": "auth != null && newData.exists() && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner'",
               ".validate": "newData.hasChildren()"
             },
@@ -146,14 +258,14 @@
             "staff": {
               ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'staff' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'member')",
               "$taskId": {
-                ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (data.exists() || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
+                ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator' && (data.exists() || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
                 ".validate": "!newData.exists() || (newData.hasChildren(['id','visibility','audience','title']) && newData.child('id').val() === $taskId && newData.child('visibility').val() === 'staff' && newData.child('audience').val() === 'staff' && newData.child('title').isString() && newData.child('title').val().length > 0 && newData.child('title').val().length <= 300 && (!newData.child('workspaceId').exists() || newData.child('workspaceId').val() !== 'personal'))"
               }
             },
             "cast": {
-              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               "$taskId": {
-                ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (data.exists() || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
+                ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator' && (data.exists() || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
                 ".validate": "!newData.exists() || (newData.hasChildren(['id','visibility','audience','title']) && newData.child('id').val() === $taskId && newData.child('visibility').val() === 'cast' && newData.child('audience').val() === 'cast' && newData.child('title').isString() && newData.child('title').val().length > 0 && newData.child('title').val().length <= 300 && (!newData.child('workspaceId').exists() || newData.child('workspaceId').val() !== 'personal'))"
               }
             },
@@ -168,6 +280,7 @@
               ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner'",
               ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner'",
               "$id": {
+                ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'external_collaborator' && root.child('teams').child($teamId).child('members').child(auth.uid).child('projectAccess').child($id).val() === true",
                 ".validate": "!newData.exists() || (newData.hasChildren(['id','visibility','name']) && newData.child('id').val() === $id && newData.child('visibility').val() === 'owner' && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 300)"
               }
             },
@@ -175,6 +288,7 @@
               ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
               ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
               "$id": {
+                ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'external_collaborator' && root.child('teams').child($teamId).child('members').child(auth.uid).child('projectAccess').child($id).val() === true",
                 ".validate": "!newData.exists() || (newData.hasChildren(['id','visibility','name']) && newData.child('id').val() === $id && newData.child('visibility').val() === 'operations' && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 300)"
               }
             },
@@ -182,13 +296,15 @@
               ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'staff' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'member')",
               ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'staff' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'member')",
               "$id": {
+                ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'external_collaborator' && root.child('teams').child($teamId).child('members').child(auth.uid).child('projectAccess').child($id).val() === true",
                 ".validate": "!newData.exists() || (newData.hasChildren(['id','visibility','name']) && newData.child('id').val() === $id && newData.child('visibility').val() === 'staff' && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 300)"
               }
             },
             "cast": {
-              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               "$id": {
+                ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'external_collaborator' && root.child('teams').child($teamId).child('members').child(auth.uid).child('projectAccess').child($id).val() === true",
                 ".validate": "!newData.exists() || (newData.hasChildren(['id','visibility','name']) && newData.child('id').val() === $id && newData.child('visibility').val() === 'cast' && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 300)"
               }
             },
@@ -221,8 +337,8 @@
               }
             },
             "cast": {
-              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+              ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+              ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
               "$id": {
                 ".validate": "!newData.exists() || (newData.hasChildren(['id','visibility','title']) && newData.child('id').val() === $id && newData.child('visibility').val() === 'cast' && newData.child('title').isString() && newData.child('title').val().length > 0 && newData.child('title').val().length <= 300)"
               }
@@ -233,62 +349,62 @@
             }
           },
           "events": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
             "$id": {
               ".validate": "!newData.exists() || (newData.child('id').val() === $id && newData.child('title').isString() && newData.child('title').val().length > 0 && newData.child('title').val().length <= 300 && (!newData.child('workspaceId').exists() || newData.child('workspaceId').val() !== 'personal'))"
             }
           },
           "meetings": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
             "$id": {
               ".validate": "!newData.exists() || (newData.child('id').val() === $id && newData.child('title').isString())"
             }
           },
           "schedulePolls": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
             "$id": {
               ".validate": "!newData.exists() || (newData.child('id').val() === $id && newData.child('title').isString() && newData.child('slots').hasChildren())"
             }
           },
           "futureItems": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
             ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
             "$id": {
               ".validate": "!newData.exists() || (newData.child('id').val() === $id && newData.child('title').isString())"
             }
           },
           "trashItems": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
             "$id": {
               ".validate": "!newData.exists() || (newData.child('id').val() === $id && newData.child('kind').isString() && newData.child('record').exists() && newData.child('deletedAt').isString())"
             }
           },
           "recoveryArchive": {
             ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && (root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'owner' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'operations' || root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() === 'admin')",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
             "$id": {
               ".validate": "!newData.exists() || (newData.child('id').val() === $id && newData.child('kind').isString() && newData.child('record').exists() && newData.child('permanentlyDeletedAt').isString())"
             }
           },
           "yearlyLogs": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true"
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'"
           },
           "weeklyLogs": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true"
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'"
           },
           "dailyEntries": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true"
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'"
           },
           "changeLog": {
-            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
-            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true",
+            ".read": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
+            ".write": "auth != null && root.child('teams').child($teamId).child('members').child(auth.uid).child('active').val() === true && root.child('teams').child($teamId).child('members').child(auth.uid).child('role').val() !== 'external_collaborator'",
             "$id": {
               ".validate": "!newData.exists() || newData.child('id').val() === $id"
             }

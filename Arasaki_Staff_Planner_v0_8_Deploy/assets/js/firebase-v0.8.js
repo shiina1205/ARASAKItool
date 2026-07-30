@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
     import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
-    import { getDatabase, ref, get, set, update, onValue, onChildAdded, onChildChanged, onChildRemoved, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js';
+    import { getDatabase, ref, get, set, update, runTransaction, onValue, onChildAdded, onChildChanged, onChildRemoved, serverTimestamp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js';
 
     const DEFAULT_TEAM_ID='arasaki-shipyard';
     async function loadFirebaseRuntimeConfig() {
@@ -20,8 +20,8 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
     const workspaceName=String(TEAM_NAME||({'arasaki-shipyard':'荒嵜造船所'})[TEAM_ID]||TEAM_ID||'イベント');
     window.setPlannerWorkspaceIdentity?.(TEAM_ID,workspaceName);
 
-    const roleLabels = {owner:'オーナー',operations:'運営',staff:'スタッフ',cast:'キャスト',admin:'運営',member:'スタッフ',viewer:'キャスト'};
-    const roleOrder = {owner:0,operations:1,admin:1,staff:2,member:2,cast:3,viewer:3};
+    const roleLabels = {owner:'オーナー',operations:'運営',staff:'スタッフ',cast:'キャスト',external_collaborator:'外部協力者',admin:'運営',member:'スタッフ',viewer:'キャスト'};
+    const roleOrder = {owner:0,operations:1,admin:1,staff:2,member:2,external_collaborator:3,cast:4,viewer:4};
 
     const gate=document.getElementById('authGate');
     const status=document.getElementById('authStatus');
@@ -51,8 +51,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
     let auth=null, db=null, activeUser=null, authUser=null;
     let ownMember=null, ownRequest=null, workspaceUid='';
     let membersData={}, requestsData={}, profilesData={};
-    let unsubscribeOwnMember=null, unsubscribeOwnRequest=null, unsubscribeMembers=null, unsubscribeRequests=null, unsubscribeProfiles=null, unsubscribeGlobalManagement=null;
-    let workspaceUnsubscribers=[], workspaceReady=false, cloudBaseline=null, pendingCloudState=null;
+    const rejectedInviteCleanupPromises=new Map();
+    let unsubscribeOwnMember=null, unsubscribeOwnRequest=null, unsubscribeMembers=null, unsubscribeRequests=null, unsubscribeProfiles=null, unsubscribePublishedInvites=null, unsubscribeGlobalManagement=null;
+    let workspaceUnsubscribers=[], workspaceReady=false, workspaceLoadGeneration=0, cloudBaseline=null, pendingCloudState=null;
     const appReadyPromise=window.__ARASAKI_APP_READY__
       ? Promise.resolve()
       : new Promise(resolve=>document.addEventListener('arasaki-app-ready',resolve,{once:true}));
@@ -83,6 +84,67 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
     };
     const normalizedRole=role=>({admin:'operations',member:'staff',viewer:'cast'}[role]||role);
     const managerRole=role=>normalizedRole(role)==='owner'||normalizedRole(role)==='operations';
+    const currentSurface=()=>window.getPlannerSurface?.()||(location.pathname.split('/').filter(Boolean)[0]==='owner'?'owner':location.pathname.split('/').filter(Boolean)[0]==='admin'?'global':'app');
+    const staffManagementAvailable=()=>currentSurface()==='owner';
+    const validFirebaseKey=value=>/^[^.#$\[\]\/]{1,256}$/.test(String(value||''));
+    const validInviteToken=value=>String(value||'').length>=12&&validFirebaseKey(value);
+    const projectInvitePath=token=>`teams/${TEAM_ID}/invites/${token}`;
+    const projectAccessMap=value=>{
+      if(!value||typeof value!=='object'||Array.isArray(value))return {};
+      return Object.fromEntries(Object.entries(value).filter(([projectId,allowed])=>validFirebaseKey(projectId)&&allowed===true));
+    };
+    const projectAccessEntries=user=>Object.entries(projectAccessMap(user?.projectAccess));
+    function additionalProjectInviteContext(member) {
+      const params=new URLSearchParams(location.search);
+      const token=params.get('invite')||'';
+      const projectId=params.get('project')||'';
+      if(
+        normalizedRole(member?.role)!=='external_collaborator'
+        ||member?.active===false
+        ||!validInviteToken(token)
+        ||!validFirebaseKey(projectId)
+        ||projectAccessMap(member?.projectAccess)[projectId]===true
+      )return null;
+      return {token,projectId};
+    }
+    const normalizedClaimHashes=value=>{
+      const claims={_seed:true};
+      if(!value||typeof value!=='object'||Array.isArray(value))return claims;
+      Object.entries(value).forEach(([hash,claimed])=>{
+        if(/^[a-f0-9]{64}$/.test(hash)&&claimed===true)claims[hash]=true;
+      });
+      return claims;
+    };
+    const inviteUsedCount=invite=>Math.max(0,Object.values(normalizedClaimHashes(invite?.claimHashes)).filter(value=>value===true).length-1);
+    async function projectInviteClaimHash(token,uid,generation='') {
+      if(!globalThis.crypto?.subtle)throw new Error('このブラウザでは安全な招待承認を利用できません。');
+      const bytes=new TextEncoder().encode(`${TEAM_ID}:${token}:${uid}${generation?`:${generation}`:''}`);
+      const digest=await globalThis.crypto.subtle.digest('SHA-256',bytes);
+      return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+    }
+    const inviteExpiryTime=value=>{
+      const parsed=typeof value==='number'?value:Date.parse(String(value||''));
+      return Number.isFinite(parsed)?parsed:NaN;
+    };
+    function projectInviteValidationError(invite,token='',requestedProjectId='',existingClaimHash='') {
+      if(!invite||typeof invite!=='object')return 'この招待リンクは見つかりません。';
+      if(!validFirebaseKey(invite.id))return '招待リンクIDが正しくありません。';
+      if(!validInviteToken(invite.token)||(token&&invite.token!==token))return '招待トークンが一致しません。';
+      if(invite.teamId!==TEAM_ID||invite.eventId!==TEAM_ID)return 'このイベント用の招待リンクではありません。';
+      if(invite.kind!=='external'||invite.role!=='external_collaborator')return '外部協力者用の招待リンクではありません。';
+      if(!validFirebaseKey(invite.projectId))return '招待先プロジェクトが正しくありません。';
+      if(requestedProjectId&&requestedProjectId!==invite.projectId)return '招待先プロジェクトが一致しません。';
+      if(!['owner','operations','staff','cast'].includes(invite.projectVisibility))return 'プロジェクトの公開範囲が正しくありません。';
+      if(!invite.claimHashes||typeof invite.claimHashes!=='object'||Array.isArray(invite.claimHashes)||invite.claimHashes._seed!==true)return '招待リンクの利用情報が正しくありません。';
+      if(Object.entries(invite.claimHashes).some(([hash,claimed])=>(hash!=='_seed'&&!/^[a-f0-9]{64}$/.test(hash))||claimed!==true))return '招待リンクの利用情報が正しくありません。';
+      const expiresAt=inviteExpiryTime(invite.expiresAt);
+      if(!Number.isFinite(expiresAt)||Date.now()>expiresAt)return 'この招待リンクは期限切れです。';
+      const limit=Math.max(1,Number(invite.limit)||0),used=inviteUsedCount(invite);
+      if(Number(invite.used)!==used)return '招待リンクの使用回数が正しくありません。';
+      const alreadyClaimed=existingClaimHash&&invite.claimHashes[existingClaimHash]===true;
+      if(invite.active===false||(!alreadyClaimed&&used>=limit))return 'この招待リンクは無効、または使用上限に達しています。';
+      return '';
+    }
     async function enterGlobalAdmin(user){
       const snapshot=await get(ref(db,`globalAdmins/${user.uid}`));
       const admin=snapshot.val();
@@ -91,6 +153,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         const deniedTitle=ownerAccessDenied?.querySelector('strong');if(deniedTitle)deniedTitle.textContent='全体管理者権限が必要です';
         setAuthStatus('このGoogleアカウントは全体管理者として登録されていません。');return;
       }
+      window.startPlannerCloudSession?.(`${user.uid}:global`);
       activeUser={uid:user.uid,email:user.email||'',name:admin.displayName||user.displayName||user.email||'全体管理者',role:'owner',roleLabel:'全体管理者'};
       window.setStaffCloudUser?.(activeUser);window.setStaffReadOnly?.(false);window.applyRolePageAccess?.();setGate(false);if(joinPanel)joinPanel.hidden=true;
       unsubscribeGlobalManagement=onValue(ref(db,'globalManagement'),data=>window.setGlobalAdminData?.(data.val()||{}),error=>window.setCloudSyncStatus?.('error','読込エラー',error.message));
@@ -116,15 +179,43 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       managementMessage.className=`staff-management-message${type?` ${type}`:''}`;
     };
 
-    function stopWorkspaceListeners() {
-      workspaceUnsubscribers.forEach(unsubscribe=>{try{unsubscribe?.();}catch(_){}});
-      workspaceUnsubscribers=[];workspaceReady=false;cloudBaseline=null;pendingCloudState=null;
+    function stopManagementListeners() {
       if(unsubscribeMembers){unsubscribeMembers();unsubscribeMembers=null;}
       if(unsubscribeRequests){unsubscribeRequests();unsubscribeRequests=null;}
+      membersData={};requestsData={};
+      if(managementPanel)managementPanel.hidden=true;
+    }
+    function stopPublishedInviteListener() {
+      if(unsubscribePublishedInvites){unsubscribePublishedInvites();unsubscribePublishedInvites=null;}
+      window.applyPublishedProjectInvites?.([]);
+    }
+    function startPublishedInviteListener() {
+      if(!db||!activeUser||!managerRole(activeUser.role)){
+        stopPublishedInviteListener();
+        return;
+      }
+      if(unsubscribePublishedInvites)return;
+      unsubscribePublishedInvites=onValue(
+        ref(db,`teams/${TEAM_ID}/invites`),
+        snapshot=>{
+          if(!managerRole(activeUser?.role)){window.applyPublishedProjectInvites?.([]);return;}
+          window.applyPublishedProjectInvites?.(Object.values(snapshot.val()||{}));
+        },
+        error=>{
+          console.error('プロジェクト招待一覧を読み込めません',error);
+          window.applyPublishedProjectInvites?.([]);
+        }
+      );
+    }
+    function stopWorkspaceListeners() {
+      workspaceLoadGeneration+=1;
+      workspaceUnsubscribers.forEach(unsubscribe=>{try{unsubscribe?.();}catch(_){}});
+      workspaceUnsubscribers=[];workspaceReady=false;cloudBaseline=null;pendingCloudState=null;
+      stopManagementListeners();
+      stopPublishedInviteListener();
       if(unsubscribeProfiles){unsubscribeProfiles();unsubscribeProfiles=null;}
       if(unsubscribeGlobalManagement){unsubscribeGlobalManagement();unsubscribeGlobalManagement=null;}
       workspaceUid='';membersData={};requestsData={};profilesData={};window.staffDirectory={};
-      if(managementPanel)managementPanel.hidden=true;
     }
 
     function stopAllListeners() {
@@ -155,6 +246,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       if(normalized==='owner')return [...VISIBILITY_BUCKETS];
       if(normalized==='operations')return ['operations','staff','cast'];
       if(normalized==='staff')return ['staff','cast'];
+      if(normalized==='external_collaborator')return [];
       return ['cast'];
     };
     const allowedTaskAudiences=allowedVisibilityBuckets;
@@ -220,7 +312,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       if(!jsonEqual(before.settings,after.settings))updates['config/settings']=clone(after.settings||{});
       if(!jsonEqual(before.preferences,after.preferences))updates['config/preferences']=clone(after.preferences||{});
       if(!jsonEqual(before.menuConfig,after.menuConfig))updates['config/menuConfig']=clone(after.menuConfig||[]);
-      if(!jsonEqual(before.adminConfig,after.adminConfig)&&managerRole(activeUser?.role))updates['config/adminConfig']=clone(after.adminConfig||{});
+      const beforeAdminConfig=withoutLegacyExternalInvites(before.adminConfig);
+      const afterAdminConfig=withoutLegacyExternalInvites(after.adminConfig);
+      if(!jsonEqual(beforeAdminConfig,afterAdminConfig)&&managerRole(activeUser?.role))updates['config/adminConfig']=afterAdminConfig;
       if(normalizedRole(activeUser?.role)==='owner'){
         if(!jsonEqual(before.categoryMaster,after.categoryMaster))updates['config/categoryMaster']=clone(after.categoryMaster||{});
         if(!jsonEqual(before.projectTemplates,after.projectTemplates))updates['config/projectTemplates']=clone(after.projectTemplates||{});
@@ -273,7 +367,10 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       if(!db||!activeUser)return;
       const next=clone(state);
       if(!workspaceReady||!cloudBaseline){pendingCloudState=next;return;}
-      const teamUpdates=buildWorkspaceUpdates(cloudBaseline,next,{includeMeta:false});
+      // 外部協力者は共有workspaceへ一切書き込まず、自分のworkspaceだけを同期します。
+      const teamUpdates=normalizedRole(activeUser.role)==='external_collaborator'
+        ?{}
+        :buildWorkspaceUpdates(cloudBaseline,next,{includeMeta:false});
       const personalUpdates=buildPersonalWorkspaceUpdates(cloudBaseline,next);
       const teamMeaningful=Object.keys(teamUpdates);
       const personalMeaningful=Object.keys(personalUpdates);
@@ -294,6 +391,55 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       }
     }
     window.staffCloud={save(state){return cloudSaveNow(clone(state));}};
+    window.publishProjectInvite=async invite=>{
+      if(!db||!activeUser)throw new Error('Firebaseへログインしてから招待リンクを発行してください。');
+      if(!managerRole(activeUser.role))throw new Error('招待リンクを発行できるのはイベントオーナー・運営のみです。');
+      const token=String(invite?.token||'');
+      if(!validInviteToken(token))throw new Error('招待トークンの形式が正しくありません。');
+      const context=window.getPlannerInvitationContext?.(token)||invite||{};
+      const expiresAt=inviteExpiryTime(context.expiresAt||invite?.expiresAt);
+      const payload={
+        id:String(context.id||invite?.id||token),
+        token,
+        eventId:TEAM_ID,
+        teamId:TEAM_ID,
+        role:'external_collaborator',
+        kind:'external',
+        projectId:String(context.projectId||''),
+        projectVisibility:normalizeVisibility(context.projectVisibility||invite?.projectVisibility||'staff'),
+        expiresAt,
+        limit:Math.max(1,Number(context.limit??invite?.limit)||1),
+        used:0,
+        active:context.active!==false&&invite?.active!==false,
+        createdAt:Date.now(),
+        createdBy:activeUser.uid,
+        claimHashes:{_seed:true}
+      };
+      const validationError=projectInviteValidationError(payload,token,payload.projectId);
+      if(validationError)throw new Error(validationError);
+      await set(ref(db,projectInvitePath(token)),payload);
+      return clone(payload);
+    };
+    window.setProjectInviteActive=async (tokenValue,active)=>{
+      if(!db||!activeUser)throw new Error('Firebaseへログインしてください。');
+      if(!managerRole(activeUser.role))throw new Error('招待リンクを変更できるのはイベントオーナー・運営のみです。');
+      const token=String(tokenValue||'');
+      if(!validInviteToken(token))throw new Error('招待トークンの形式が正しくありません。');
+      const result=await runTransaction(ref(db,projectInvitePath(token)),invite=>{
+        if(!invite||invite.token!==token||invite.teamId!==TEAM_ID||invite.eventId!==TEAM_ID||invite.kind!=='external'||invite.role!=='external_collaborator')return;
+        if(!invite.claimHashes||typeof invite.claimHashes!=='object'||Array.isArray(invite.claimHashes)||invite.claimHashes._seed!==true)return;
+        if(Object.entries(invite.claimHashes).some(([hash,claimed])=>(hash!=='_seed'&&!/^[a-f0-9]{64}$/.test(hash))||claimed!==true))return;
+        const expiresAt=inviteExpiryTime(invite.expiresAt);
+        const limit=Math.max(1,Number(invite.limit)||1);
+        const claimHashes=normalizedClaimHashes(invite.claimHashes);
+        const used=Math.max(0,Object.values(claimHashes).filter(value=>value===true).length-1);
+        if(Number(invite.used)!==used)return;
+        if(active&&(!Number.isFinite(expiresAt)||Date.now()>expiresAt||used>=limit))return;
+        return {...invite,claimHashes,used,active:!!active};
+      },{applyLocally:false});
+      if(!result.committed)throw new Error(active?'期限切れ、または使用上限に達した招待リンクは再有効化できません。':'招待リンクを変更できませんでした。');
+      return clone(result.snapshot.val());
+    };
 
     function activeProfileEntries() {
       return Object.entries(profilesData).filter(([,profile])=>profile&&profile.active!==false&&String(profile.displayName||'').trim()).sort((a,b)=>String(a[1].displayName).localeCompare(String(b[1].displayName),'ja'));
@@ -543,6 +689,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         const snapshot=await get(profileRef);const current=snapshot.val()||{};
         const next={...current,displayName:member.displayName||user.displayName||user.email||'スタッフ',role:normalizedRole(member.role||'cast'),active:member.active!==false,photoURL:user.photoURL||current.photoURL||'',discord:current.discord||'',vrchat:current.vrchat||'',updatedAt:serverTimestamp(),updatedByUid:user.uid};
         if(!snapshot.exists()||current.displayName!==next.displayName||current.role!==next.role||current.active!==next.active||(!current.photoURL&&next.photoURL))await set(profileRef,next);
+        if(activeUser?.uid!==user.uid||normalizedRole(activeUser.role)!==normalizedRole(member.role||'cast'))return;
+        profilesData={...profilesData,[user.uid]:{...next,updatedAt:current.updatedAt||Date.now()}};
+        syncStaffDirectory();
       }catch(error){console.error('プロフィール初期化エラー',error);}
     }
     async function syncProfilesFromMembers() {
@@ -556,8 +705,15 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       if(jobs.length)try{await Promise.all(jobs);}catch(error){console.error('プロフィール一覧同期エラー',error);}
     }
     function startProfilesListener() {
+      if(normalizedRole(activeUser?.role)==='external_collaborator'){
+        if(unsubscribeProfiles){unsubscribeProfiles();unsubscribeProfiles=null;}
+        return;
+      }
       if(unsubscribeProfiles||!db||!activeUser)return;
-      unsubscribeProfiles=onValue(ref(db,`teams/${TEAM_ID}/profiles`),snapshot=>{profilesData=snapshot.val()||{};syncStaffDirectory();syncProfilesFromMembers();},error=>{console.error(error);setMyPageStatus(`プロフィールを読み込めません：${error.message}`,'error');});
+      unsubscribeProfiles=onValue(ref(db,`teams/${TEAM_ID}/profiles`),snapshot=>{
+        if(normalizedRole(activeUser?.role)==='external_collaborator')return;
+        profilesData=snapshot.val()||{};syncStaffDirectory();syncProfilesFromMembers();
+      },error=>{console.error(error);setMyPageStatus(`プロフィールを読み込めません：${error.message}`,'error');});
     }
 
     function showJoinRequest(user,request,member) {
@@ -568,13 +724,11 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       setGate(true);showUid('');
       if(!joinPanel)return;
       joinPanel.hidden=false;
-      const invitationToken=new URLSearchParams(location.search).get('invite')||new URLSearchParams(location.search).get('globalInvite')||'';
-      if(invitationToken){
-        joinTitle.textContent='イベント招待リンク';
-        joinDescription.textContent='Googleでログイン後、VRChatアカウントリンクを入力して参加申請を送信してください。';
-      }
+      const params=new URLSearchParams(location.search);
+      const projectInvitation=Boolean(params.get('invite')&&params.get('project'));
+      const additionalProjectRequest=Boolean(additionalProjectInviteContext(member));
       joinAccount.textContent=`Googleアカウント：${user.displayName||'名前未設定'} / ${user.email||'メールアドレス不明'}`;
-      joinName.value=request?.displayName||user.displayName||'';
+      joinName.value=request?.displayName||member?.displayName||user.displayName||'';
       if(joinVrchat)joinVrchat.value=request?.vrchat||'';
       const inactive=!!member&&member.active===false;
       const pending=request?.status==='pending';
@@ -589,27 +743,28 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         joinStatus.textContent='サイト上のスタッフ管理から「有効」に戻すと、再び利用できます。';
         setAuthStatus('このGoogleアカウントは現在利用停止中です。');
       }else if(pending){
-        joinTitle.textContent='参加申請を送信済みです';
-        joinDescription.textContent='オーナーまたは運営が承認すると、自動的にStaff Plannerへ入れるようになります。';
+        joinTitle.textContent=request?.inviteKind==='external'||projectInvitation?'プロジェクト参加申請を送信済みです':'参加申請を送信済みです';
+        joinDescription.textContent=request?.inviteKind==='external'||projectInvitation?'オーナーまたは運営が承認すると、招待されたプロジェクトが追加されます。':'オーナーまたは運営が承認すると、自動的にStaff Plannerへ入れるようになります。';
         joinStatus.textContent=`申請日時：${formatDate(request.requestedAt)}`;
-        setAuthStatus('スタッフ参加申請の承認を待っています。');
+        setAuthStatus(projectInvitation?'プロジェクト参加申請の承認を待っています。':'スタッフ参加申請の承認を待っています。');
       }else{
-        joinTitle.textContent=rejected?'参加申請が見送られました':'スタッフ参加申請';
-        joinDescription.textContent=rejected?'表示名を確認し、必要に応じてもう一度申請できます。':'表示名を確認し、オーナー／運営へ参加申請を送信してください。';
+        joinTitle.textContent=rejected?(projectInvitation?'プロジェクト参加申請が見送られました':'参加申請が見送られました'):(projectInvitation?'プロジェクト参加申請':'スタッフ参加申請');
+        joinDescription.textContent=rejected?'表示名を確認し、必要に応じてもう一度申請できます。':projectInvitation?'表示名とVRChatアカウントを確認し、招待されたプロジェクトへの参加申請を送信してください。':'表示名を確認し、オーナー／運営へ参加申請を送信してください。';
         joinStatus.textContent=rejected?(request.reviewNote||'オーナー／運営へ確認してください。'):'';
-        setAuthStatus('このGoogleアカウントはまだスタッフ登録されていません。');
+        setAuthStatus(additionalProjectRequest?'追加プロジェクトへの参加申請を送信してください。':'このGoogleアカウントはまだスタッフ登録されていません。');
       }
       window.setCloudSyncStatus?.('syncing','承認待ち','オーナー／運営が参加申請を承認すると共有データを開きます。');
     }
 
-    function roleOptions(selected,canChooseOwner) {
+    function roleOptions(selected,canChooseOwner,includeExternal=false) {
       const normalizedSelected=normalizedRole(selected);
       const roles=canChooseOwner?['owner','operations','staff','cast']:['staff','cast'];
+      if(includeExternal)roles.push('external_collaborator');
       return roles.map(role=>`<option value="${role}" ${normalizedSelected===role?'selected':''}>${roleLabels[role]}</option>`).join('');
     }
 
     function renderStaffManagement() {
-      const canManage=activeUser&&managerRole(activeUser.role);
+      const canManage=staffManagementAvailable()&&activeUser&&managerRole(activeUser.role);
       if(!managementPanel)return;
       managementPanel.hidden=!canManage;
       if(!canManage)return;
@@ -617,11 +772,20 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       const pending=Object.entries(requestsData).filter(([,req])=>req&&req.status==='pending').sort((a,b)=>(a[1].requestedAt||0)-(b[1].requestedAt||0));
       requestCount.textContent=`${pending.length}件`;
       requestList.innerHTML=pending.length?pending.map(([uid,req])=>{
-        const options=`<option value="" selected>ロールを選択</option>`+roleOptions('staff',normalizedRole(activeUser.role)==='owner').replaceAll(' selected','');
-        return `<div class="staff-request-card" data-request-uid="${safe(uid)}">
-          <div class="staff-request-top"><div><div class="staff-request-name">${safe(req.displayName||'名前未設定')}</div><div class="staff-request-email">${safe(req.email||'')}</div></div><span class="tag">承認待ち</span></div>
-          <div class="staff-request-meta">申請：${safe(formatDate(req.requestedAt))}${req.vrchat?` ／ <a href="${safe(req.vrchat)}" target="_blank" rel="noopener noreferrer">VRChatで本人確認</a>`:' ／ VRChatリンク未登録'}</div>
-          <div class="staff-request-actions"><select data-request-role aria-label="承認する権限">${options}</select><button class="btn small success" type="button" data-request-action="approve" disabled>許可</button><button class="btn small danger" type="button" data-request-action="reject">見送り</button></div>
+        const externalInvite=req.inviteKind==='external'||req.requestedRole==='external_collaborator';
+        const reviewClaim=req.reviewClaim&&typeof req.reviewClaim==='object'?req.reviewClaim:null;
+        const reviewLocked=!!reviewClaim?.id;
+        const options=externalInvite
+          ? `<option value="external_collaborator" selected>${safe(roleLabels.external_collaborator)}</option>`
+          : reviewClaim?.role
+            ? roleOptions(reviewClaim.role,normalizedRole(activeUser.role)==='owner')
+            : `<option value="" selected>ロールを選択</option>${roleOptions('staff',normalizedRole(activeUser.role)==='owner').replaceAll(' selected','')}`;
+        const inviteMeta=externalInvite?` ／ プロジェクト招待：${safe(req.projectId||'不明')}`:'';
+        const reviewLabel=reviewLocked?(reviewClaim.phase==='canceling'?'解除処理中':reviewClaim.action==='reject'?'見送り処理中':reviewClaim.phase==='committing'?'承認確定中':'承認処理中'):(externalInvite?'外部協力者':'承認待ち');
+        return `<div class="staff-request-card" data-request-uid="${safe(uid)}" data-request-locked="${reviewLocked?'true':'false'}">
+          <div class="staff-request-top"><div><div class="staff-request-name">${safe(req.displayName||'名前未設定')}</div><div class="staff-request-email">${safe(req.email||'')}</div></div><span class="tag">${reviewLabel}</span></div>
+          <div class="staff-request-meta">申請：${safe(formatDate(req.requestedAt))}${req.vrchat?` ／ <a href="${safe(req.vrchat)}" target="_blank" rel="noopener noreferrer">VRChatで本人確認</a>`:' ／ VRChatリンク未登録'}${inviteMeta}</div>
+          <div class="staff-request-actions"><select data-request-role aria-label="承認する権限" ${externalInvite||reviewLocked?'disabled':''}>${options}</select><button class="btn small success" type="button" data-request-action="approve" ${reviewLocked||!externalInvite?'disabled':''}>許可</button><button class="btn small danger" type="button" data-request-action="reject" ${reviewLocked?'disabled':''}>見送り</button>${reviewLocked?'<button class="btn small" type="button" data-request-action="unlock">処理を解除</button>':''}</div>
         </div>`;
       }).join(''):'<div class="staff-admin-empty">現在、承認待ちの参加申請はありません。</div>';
 
@@ -639,7 +803,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         const selfOwner=isSelf&&activeRole==='owner';
         const protectedRow=adminProtected||selfOwner;
         const canChooseOwner=activeRole==='owner';
-        const options=roleOptions(member.role,canChooseOwner);
+        const options=roleOptions(member.role,canChooseOwner,memberRole==='external_collaborator');
         const roleControl=protectedRow?`<div><span class="tag">${safe(roleLabels[member.role]||member.role)}</span><div class="staff-protected-note">${isSelf?'自分のオーナー権限は保護されています':'オーナーのみ変更可能'}</div></div>`:`<select data-member-role aria-label="権限">${options}</select>`;
         return `<div class="staff-member-row" data-member-uid="${safe(uid)}">
           <div class="staff-member-identity"><input data-member-name value="${safe(member.displayName||'')}" aria-label="表示名" ${adminProtected?'disabled':''}/><div class="staff-member-email">${safe(member.email||uid)}</div></div>
@@ -653,17 +817,15 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
     }
 
     function startManagementListeners() {
-      if(!db||!activeUser||!managerRole(activeUser.role)){
-        if(unsubscribeMembers){unsubscribeMembers();unsubscribeMembers=null;}
-        if(unsubscribeRequests){unsubscribeRequests();unsubscribeRequests=null;}
-        if(managementPanel)managementPanel.hidden=true;
+      if(!staffManagementAvailable()||!db||!activeUser||!managerRole(activeUser.role)){
+        stopManagementListeners();
         return;
       }
       if(!unsubscribeMembers){
         unsubscribeMembers=onValue(ref(db,`teams/${TEAM_ID}/members`),snapshot=>{membersData=snapshot.val()||{};renderStaffManagement();syncProfilesFromMembers();},error=>{console.error(error);setManagementMessage(`スタッフ一覧を読み込めません：${error.message}`,'error');});
       }
       if(!unsubscribeRequests){
-        unsubscribeRequests=onValue(ref(db,`teams/${TEAM_ID}/joinRequests`),snapshot=>{requestsData=snapshot.val()||{};renderStaffManagement();},error=>{console.error(error);setManagementMessage(`参加申請を読み込めません：${error.message}`,'error');});
+        unsubscribeRequests=onValue(ref(db,`teams/${TEAM_ID}/joinRequests`),snapshot=>{requestsData=snapshot.val()||{};renderStaffManagement();retryRejectedInviteClaimCleanup();},error=>{console.error(error);setManagementMessage(`参加申請を読み込めません：${error.message}`,'error');});
       }
       renderStaffManagement();
     }
@@ -740,8 +902,83 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
     }
     const values=(snapshot,decorate=value=>value)=>snapshot.exists()?Object.entries(snapshot.val()||{}).map(([key,value])=>decorate(value,key)):[];
     const snapshotValue=(snapshot,fallback)=>snapshot.exists()?snapshot.val():fallback;
+    function externalProjectRecord(record,projectId,visibility,uid=activeUser?.uid||'') {
+      const memberUids=Array.isArray(record?.memberUids)?record.memberUids:[];
+      const externalCollaboratorUids=Array.isArray(record?.externalCollaboratorUids)?record.externalCollaboratorUids:[];
+      return {
+        ...normalizedVisibilityRecord(record,visibility),
+        id:projectId,
+        memberUids:uid?[...new Set([...memberUids,uid])]:memberUids,
+        externalCollaboratorUids:uid?[...new Set([...externalCollaboratorUids,uid])]:externalCollaboratorUids
+      };
+    }
+    function externalWorkspaceShell() {
+      return {
+        version:108,
+        categoryMigrationVersion:0,
+        categoryMaster:[],
+        projectTemplates:[],
+        tasks:[],
+        events:[],
+        projects:[],
+        meetings:[],
+        schedulePolls:[],
+        notes:[],
+        futureItems:[],
+        trashItems:[],
+        recoveryArchive:[],
+        yearlyLogs:{},
+        weeklyLogs:{},
+        dailyEntries:{},
+        changeLog:[],
+        settings:{},
+        preferences:{},
+        menuConfig:[],
+        adminConfig:{event:{},invites:[]}
+      };
+    }
+    async function loadExternalWorkspaceState() {
+      const projectIds=projectAccessEntries(activeUser).map(([projectId])=>projectId);
+      const [
+        projectSnapshotGroups,
+        personalTaskSnapshot,personalEventSnapshot,personalFutureSnapshot,
+        personalYearlySnapshot,personalWeeklySnapshot,personalDailySnapshot
+      ]=await Promise.all([
+        Promise.all(projectIds.map(projectId=>Promise.all(VISIBILITY_BUCKETS.map(visibility=>get(ref(db,`${WORKSPACE_PATH}/projects/${visibility}/${projectId}`)))))),
+        get(ref(db,`${personalWorkspacePath(activeUser.uid)}/tasks`)),
+        get(ref(db,`${personalWorkspacePath(activeUser.uid)}/events`)),
+        get(ref(db,`${personalWorkspacePath(activeUser.uid)}/futureItems`)),
+        get(ref(db,`${personalWorkspacePath(activeUser.uid)}/yearlyLogs`)),
+        get(ref(db,`${personalWorkspacePath(activeUser.uid)}/weeklyLogs`)),
+        get(ref(db,`${personalWorkspacePath(activeUser.uid)}/dailyEntries`))
+      ]);
+      const remote=externalWorkspaceShell();
+      projectIds.forEach((projectId,projectIndex)=>{
+        const snapshots=projectSnapshotGroups[projectIndex]||[];
+        const visibilityIndex=snapshots.findIndex(snapshot=>snapshot.exists());
+        if(visibilityIndex<0)return;
+        remote.projects.push(externalProjectRecord(snapshots[visibilityIndex].val(),projectId,VISIBILITY_BUCKETS[visibilityIndex]));
+      });
+      remote.tasks=values(personalTaskSnapshot,value=>({...clone(value),workspaceId:'personal'}));
+      remote.events=values(personalEventSnapshot,value=>({...clone(value),workspaceId:'personal'}));
+      remote.futureItems=values(personalFutureSnapshot,value=>({...clone(value),workspaceId:'personal'}));
+      remote.yearlyLogs=snapshotValue(personalYearlySnapshot,{});
+      remote.weeklyLogs=snapshotValue(personalWeeklySnapshot,{});
+      remote.dailyEntries=snapshotValue(personalDailySnapshot,{});
+      return remote;
+    }
+    function withoutLegacyExternalInvites(value) {
+      const config=clone(value||{});
+      if(Array.isArray(config.invites))config.invites=config.invites.filter(invite=>invite?.kind!=='external');
+      return config;
+    }
+    function publicAdminConfig(eventValue) {
+      return {event:clone(eventValue||{}),invites:[],links:[],customRoles:[]};
+    }
     async function loadWorkspaceState() {
       const role=activeUser?.role||'cast';
+      if(normalizedRole(role)==='external_collaborator')return loadExternalWorkspaceState();
+      const manager=managerRole(role);
       const allowed=allowedVisibilityBuckets(role);
       const readableSharedSections=readableSharedArraySections();
       const [
@@ -757,7 +994,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         get(ref(db,`${WORKSPACE_PATH}/config/settings`)),
         get(ref(db,`${WORKSPACE_PATH}/config/preferences`)),
         get(ref(db,`${WORKSPACE_PATH}/config/menuConfig`)),
-        get(ref(db,`${WORKSPACE_PATH}/config/adminConfig`)),
+        get(ref(db,`${WORKSPACE_PATH}/config/adminConfig${manager?'':'/event'}`)),
         get(ref(db,`${WORKSPACE_PATH}/config/categoryMaster`)),
         get(ref(db,`${WORKSPACE_PATH}/config/projectTemplates`)),
         get(ref(db,`${WORKSPACE_PATH}/meta/appVersion`)),
@@ -797,7 +1034,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       remote.settings=snapshotValue(settingsSnapshot,local.settings);
       remote.preferences=snapshotValue(preferencesSnapshot,local.preferences);
       remote.menuConfig=snapshotValue(menuConfigSnapshot,local.menuConfig);
-      remote.adminConfig=snapshotValue(adminConfigSnapshot,local.adminConfig);
+      remote.adminConfig=manager
+        ?withoutLegacyExternalInvites(snapshotValue(adminConfigSnapshot,local.adminConfig))
+        :publicAdminConfig(snapshotValue(adminConfigSnapshot,{}));
       remote.categoryMaster=snapshotValue(categoryMasterSnapshot,local.categoryMaster);
       remote.projectTemplates=snapshotValue(projectTemplatesSnapshot,local.projectTemplates);
       remote.version=Number(snapshotValue(appVersionSnapshot,local.version))||108;
@@ -811,9 +1050,11 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
     }
     function listenChildren(rootPath,path,section,knownKeys=new Set(),decorate=value=>value) {
       const target=ref(db,`${rootPath}/${path}`);
+      const listenerGeneration=workspaceLoadGeneration;
       const sourceLocation=path.startsWith('tasks/')||path.startsWith('projects/')||path.startsWith('notes/')?path:(rootPath===WORKSPACE_PATH?section:`personal/${section}`);
       const initial=new Set(knownKeys);
       workspaceUnsubscribers.push(onChildAdded(target,snapshot=>{
+        if(listenerGeneration!==workspaceLoadGeneration)return;
         if(initial.has(snapshot.key)){initial.delete(snapshot.key);return;}
         const value=decorate(snapshot.val(),snapshot.key);
         if(cloudBaseline){
@@ -824,6 +1065,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         window.applyRemotePlannerPatch?.(section,snapshot.key,value);
       }));
       workspaceUnsubscribers.push(onChildChanged(target,snapshot=>{
+        if(listenerGeneration!==workspaceLoadGeneration)return;
         const value=decorate(snapshot.val(),snapshot.key);
         if(cloudBaseline){
           if(section==='tasks')cloudBaseline.tasks=[...(cloudBaseline.tasks||[]).filter(item=>item.id!==snapshot.key),value];
@@ -833,6 +1075,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         window.applyRemotePlannerPatch?.(section,snapshot.key,value);
       }));
       workspaceUnsubscribers.push(onChildRemoved(target,snapshot=>{
+        if(listenerGeneration!==workspaceLoadGeneration)return;
         if(cloudBaseline&&(ARRAY_SECTIONS.includes(section)||section==='tasks')){
           const removed=decorate(snapshot.val(),snapshot.key);
           const current=(cloudBaseline[section]||[]).find(item=>item.id===snapshot.key);
@@ -848,16 +1091,80 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         window.applyRemotePlannerPatch?.(section,snapshot.key,null);
       }));
     }
-    function listenSingleton(rootPath,path,section) {
+    function listenSingleton(rootPath,path,section,decorate=value=>value) {
       let first=true;
+      const listenerGeneration=workspaceLoadGeneration;
       workspaceUnsubscribers.push(onValue(ref(db,`${rootPath}/${path}`),snapshot=>{
+        if(listenerGeneration!==workspaceLoadGeneration)return;
         if(first){first=false;return;}
-        const value=snapshot.val();
+        const value=decorate(snapshot.val());
         if(cloudBaseline)cloudBaseline[section]=clone(value);
         window.applyRemotePlannerPatch?.(section,'',value);
       }));
     }
+    function listenExternalProject(projectId,initialProject=null) {
+      const records=new Map();
+      const listenerGeneration=workspaceLoadGeneration;
+      if(initialProject)records.set(recordVisibility(initialProject),initialProject);
+      let publishTimer=0,disposed=false;
+      const publish=()=>{
+        publishTimer=0;
+        if(disposed)return;
+        const current=(cloudBaseline?.projects||[]).find(item=>item.id===projectId)||null;
+        const currentVisibility=current?recordVisibility(current):'';
+        const value=(currentVisibility&&records.get(currentVisibility))
+          ||VISIBILITY_BUCKETS.map(visibility=>records.get(visibility)).find(Boolean)
+          ||null;
+        if(jsonEqual(current,value))return;
+        if(cloudBaseline){
+          cloudBaseline.projects=(cloudBaseline.projects||[]).filter(item=>item.id!==projectId);
+          if(value)cloudBaseline.projects.push(value);
+        }
+        window.applyRemotePlannerPatch?.('projects',projectId,value);
+      };
+      const schedulePublish=()=>{
+        if(publishTimer)clearTimeout(publishTimer);
+        publishTimer=setTimeout(publish,0);
+      };
+      VISIBILITY_BUCKETS.forEach(visibility=>{
+        const path=`projects/${visibility}/${projectId}`;
+        workspaceUnsubscribers.push(onValue(ref(db,`${WORKSPACE_PATH}/${path}`),snapshot=>{
+          if(disposed||listenerGeneration!==workspaceLoadGeneration)return;
+          if(snapshot.exists()){
+            records.set(visibility,externalProjectRecord(snapshot.val(),projectId,visibility));
+          }else{
+            records.delete(visibility);
+            const current=(cloudBaseline?.projects||[]).find(item=>item.id===projectId);
+            // visibility移動後に旧bucketの削除通知が届いても、新bucketのprojectは消しません。
+            if(current&&recordVisibility(current)!==visibility&&records.has(recordVisibility(current)))return;
+          }
+          schedulePublish();
+        },error=>{
+          console.error(`直接参照 ${path} を購読できません`,error);
+          window.setCloudSyncStatus?.('error','プロジェクト更新エラー',error.message||'プロジェクトのアクセス権を確認してください。');
+        }));
+      });
+      workspaceUnsubscribers.push(()=>{
+        disposed=true;
+        if(publishTimer)clearTimeout(publishTimer);
+      });
+    }
+    function attachPersonalWorkspaceListeners(initialState) {
+      listenChildren(personalWorkspacePath(activeUser.uid),'tasks','tasks',new Set((initialState.tasks||[]).filter(isPersonalRecord).map(item=>item.id)),value=>({...clone(value),workspaceId:'personal'}));
+      listenChildren(personalWorkspacePath(activeUser.uid),'events','events',new Set((initialState.events||[]).filter(isPersonalRecord).map(item=>item.id)),value=>({...clone(value),workspaceId:'personal'}));
+      listenChildren(personalWorkspacePath(activeUser.uid),'futureItems','futureItems',new Set((initialState.futureItems||[]).filter(isPersonalRecord).map(item=>item.id)),value=>({...clone(value),workspaceId:'personal'}));
+      listenChildren(personalWorkspacePath(activeUser.uid),'yearlyLogs','yearlyLogs',new Set(Object.keys(initialState.yearlyLogs||{})));
+      listenChildren(personalWorkspacePath(activeUser.uid),'weeklyLogs','weeklyLogs',new Set(Object.keys(initialState.weeklyLogs||{})));
+      listenChildren(personalWorkspacePath(activeUser.uid),'dailyEntries','dailyEntries',new Set(Object.keys(initialState.dailyEntries||{})));
+    }
     function attachWorkspaceListeners(initialState) {
+      if(normalizedRole(activeUser?.role)==='external_collaborator'){
+        projectAccessEntries(activeUser).forEach(([projectId])=>{
+          listenExternalProject(projectId,(initialState.projects||[]).find(project=>project.id===projectId)||null);
+        });
+        attachPersonalWorkspaceListeners(initialState);
+        return;
+      }
       const allowed=allowedVisibilityBuckets(activeUser?.role||'cast');
       allowed.forEach(visibility=>{
         const known=new Set((initialState.tasks||[]).filter(task=>!isPersonalRecord(task)&&recordVisibility(task)===visibility).map(task=>task.id));
@@ -874,16 +1181,12 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         listenChildren(WORKSPACE_PATH,section,section,new Set(knownItems.map(item=>item.id)));
       });
       MAP_SECTIONS.forEach(section=>listenChildren(WORKSPACE_PATH,section,section,new Set(Object.keys(initialState[section]||{}))));
-      listenChildren(personalWorkspacePath(activeUser.uid),'tasks','tasks',new Set((initialState.tasks||[]).filter(isPersonalRecord).map(item=>item.id)),value=>({...clone(value),workspaceId:'personal'}));
-      listenChildren(personalWorkspacePath(activeUser.uid),'events','events',new Set((initialState.events||[]).filter(isPersonalRecord).map(item=>item.id)),value=>({...clone(value),workspaceId:'personal'}));
-      listenChildren(personalWorkspacePath(activeUser.uid),'futureItems','futureItems',new Set((initialState.futureItems||[]).filter(isPersonalRecord).map(item=>item.id)),value=>({...clone(value),workspaceId:'personal'}));
-      listenChildren(personalWorkspacePath(activeUser.uid),'yearlyLogs','yearlyLogs',new Set(Object.keys(initialState.yearlyLogs||{})));
-      listenChildren(personalWorkspacePath(activeUser.uid),'weeklyLogs','weeklyLogs',new Set(Object.keys(initialState.weeklyLogs||{})));
-      listenChildren(personalWorkspacePath(activeUser.uid),'dailyEntries','dailyEntries',new Set(Object.keys(initialState.dailyEntries||{})));
+      attachPersonalWorkspaceListeners(initialState);
       listenSingleton(WORKSPACE_PATH,'config/settings','settings');
       listenSingleton(WORKSPACE_PATH,'config/preferences','preferences');
       listenSingleton(WORKSPACE_PATH,'config/menuConfig','menuConfig');
-      listenSingleton(WORKSPACE_PATH,'config/adminConfig','adminConfig');
+      if(managerRole(activeUser?.role))listenSingleton(WORKSPACE_PATH,'config/adminConfig','adminConfig',withoutLegacyExternalInvites);
+      else listenSingleton(WORKSPACE_PATH,'config/adminConfig/event','adminConfig',publicAdminConfig);
       listenSingleton(WORKSPACE_PATH,'config/categoryMaster','categoryMaster');
       listenSingleton(WORKSPACE_PATH,'config/projectTemplates','projectTemplates');
       listenSingleton(WORKSPACE_PATH,'meta/appVersion','version');
@@ -892,10 +1195,15 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
     async function startPlannerListener() {
       if(workspaceReady)return true;
       if(!db||!activeUser)return false;
+      const loadGeneration=workspaceLoadGeneration;
+      const loadIdentity=JSON.stringify({uid:activeUser.uid,role:activeUser.role,projectAccess:projectAccessMap(activeUser.projectAccess)});
+      const staleLoad=()=>loadGeneration!==workspaceLoadGeneration||loadIdentity!==JSON.stringify({uid:activeUser?.uid,role:activeUser?.role,projectAccess:projectAccessMap(activeUser?.projectAccess)});
       window.setCloudSyncStatus?.('syncing','共有データを読込中…','必要なデータだけを分割して読み込んでいます。');
       try{
-        await ensureWorkspaceMigrated();
+        if(normalizedRole(activeUser.role)!=='external_collaborator')await ensureWorkspaceMigrated();
+        if(staleLoad())return null;
         const remote=await loadWorkspaceState();
+        if(staleLoad())return null;
         cloudBaseline=clone(remote);workspaceReady=true;
         window.applyRemotePlannerState?.(remote);
         attachWorkspaceListeners(remote);
@@ -903,6 +1211,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
         if(pendingCloudState){const pending=pendingCloudState;pendingCloudState=null;await cloudSaveNow(pending);}
         return true;
       }catch(error){
+        if(staleLoad())return null;
         console.error(error);
         window.setCloudSyncStatus?.('error','読込エラー',error.message||'Firebaseルールとスタッフ登録を確認してください。');
         return false;
@@ -911,7 +1220,10 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
 
     function enterWorkspace(user,member) {
       const normalizedMemberRole=normalizedRole(member.role||'cast');
-      const nextUser={uid:user.uid,email:user.email||member.email||'',name:member.displayName||user.displayName||user.email||'スタッフ',role:normalizedMemberRole,roleLabel:roleLabels[normalizedMemberRole]||normalizedMemberRole};
+      const nextProjectAccess=projectAccessMap(member.projectAccess);
+      const accessScope=Object.keys(nextProjectAccess).sort().join(',');
+      window.startPlannerCloudSession?.(`${user.uid}:${normalizedMemberRole}:${accessScope}`);
+      const nextUser={uid:user.uid,email:user.email||member.email||'',name:member.displayName||user.displayName||user.email||'スタッフ',role:normalizedMemberRole,roleLabel:roleLabels[normalizedMemberRole]||normalizedMemberRole,projectAccess:nextProjectAccess};
       if(window.getPlannerSurface?.()==='owner'&&!['owner','operations'].includes(normalizedMemberRole)){
         stopWorkspaceListeners();
         activeUser=null;
@@ -927,6 +1239,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       if(loginBtn)loginBtn.hidden=false;
       if(ownerAccessDenied)ownerAccessDenied.hidden=true;
       const roleChanged=activeUser&&activeUser.role!==nextUser.role;
+      const accessChanged=activeUser&&!jsonEqual(projectAccessMap(activeUser.projectAccess),nextProjectAccess);
       activeUser=nextUser;
       window.setStaffCloudUser?.(activeUser);
       window.applyRolePageAccess?.();
@@ -934,22 +1247,37 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       setGate(false);showUid('');if(joinPanel)joinPanel.hidden=true;
       setAuthStatus('ログイン済みです。');
       if(workspaceUid!==user.uid){stopWorkspaceListeners();workspaceUid=user.uid;}
-      else if(roleChanged){
+      else if(roleChanged||accessChanged){
+        workspaceLoadGeneration+=1;
         workspaceUnsubscribers.forEach(unsubscribe=>{try{unsubscribe?.();}catch(_){}});
         workspaceUnsubscribers=[];workspaceReady=false;cloudBaseline=null;pendingCloudState=null;
       }
-      ensureOwnProfile(user,member);
-      startProfilesListener();
-      startPlannerListener().then(ok=>window.setStaffReadOnly?.(!ok));
-      if(roleChanged&&unsubscribeMembers){unsubscribeMembers();unsubscribeMembers=null;}
-      if(roleChanged&&unsubscribeRequests){unsubscribeRequests();unsubscribeRequests=null;}
+      if(normalizedMemberRole==='external_collaborator'){
+        if(unsubscribeProfiles){unsubscribeProfiles();unsubscribeProfiles=null;}
+        profilesData={};
+        window.staffDirectory={};
+        ensureOwnProfile(user,member);
+      }else{
+        ensureOwnProfile(user,member);
+        startProfilesListener();
+      }
+      startPlannerListener().then(ok=>{if(ok!==null)window.setStaffReadOnly?.(!ok);});
+      if((roleChanged||accessChanged)&&unsubscribeMembers){unsubscribeMembers();unsubscribeMembers=null;}
+      if((roleChanged||accessChanged)&&unsubscribeRequests){unsubscribeRequests();unsubscribeRequests=null;}
       startManagementListeners();
+      startPublishedInviteListener();
       window.renderMyPage?.();
     }
 
     function refreshAccessView() {
       if(!authUser)return;
-      if(ownMember&&ownMember.active!==false)enterWorkspace(authUser,ownMember);
+      if(ownMember&&ownMember.active!==false){
+        if(additionalProjectInviteContext(ownMember)){
+          const accessScope=Object.keys(projectAccessMap(ownMember.projectAccess)).sort().join(',');
+          window.startPlannerCloudSession?.(`${authUser.uid}:${normalizedRole(ownMember.role)}:${accessScope}:invite-pending`);
+          showJoinRequest(authUser,ownRequest,ownMember);
+        }else enterWorkspace(authUser,ownMember);
+      }
       else showJoinRequest(authUser,ownRequest,ownMember);
     }
 
@@ -960,6 +1288,16 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       unsubscribeOwnRequest=onValue(ref(db,`teams/${TEAM_ID}/joinRequests/${user.uid}`),snapshot=>{ownRequest=snapshot.val();refreshAccessView();},error=>{console.error(error);});
     }
 
+    async function readProjectInvite(token,requestedProjectId='',existingClaimHash='') {
+      if(!validInviteToken(token))throw new Error('招待トークンの形式が正しくありません。');
+      const snapshot=await get(ref(db,projectInvitePath(token)));
+      if(!snapshot.exists())return null;
+      const invite=snapshot.val();
+      const validationError=projectInviteValidationError(invite,token,requestedProjectId,existingClaimHash);
+      if(validationError)throw new Error(validationError);
+      return invite;
+    }
+
     async function submitJoinRequest() {
       if(!db||!authUser)return;
       const name=joinName.value.trim();
@@ -968,7 +1306,8 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       if(!/^https:\/\/(www\.)?vrchat\.com\/home\/user\/usr_/i.test(vrchat)){joinStatus.textContent='VRChatアカウントリンクを入力してください。';joinVrchat?.focus();return;}
       joinSubmit.disabled=true;joinStatus.textContent='参加申請を送信しています…';
       try{
-        const globalToken=new URLSearchParams(location.search).get('globalInvite')||'';
+        const params=new URLSearchParams(location.search);
+        const globalToken=params.get('globalInvite')||'';
         if(globalToken){
           const inviteSnapshot=await get(ref(db,`globalInvites/${globalToken}`)),invite=inviteSnapshot.val();
           if(!invite?.active||Number(invite.used)>=1||Date.now()>new Date(invite.expiresAt).getTime())throw new Error('この代表者招待リンクは無効または期限切れです。');
@@ -976,10 +1315,32 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
           joinStatus.textContent='イベント代表者の参加申請を送信しました。全体管理者の承認をお待ちください。';
           return;
         }
-        await set(ref(db,`teams/${TEAM_ID}/joinRequests/${authUser.uid}`),{
-          uid:authUser.uid,displayName:name,email:authUser.email||'',photoURL:authUser.photoURL||'',vrchat,invitationToken:new URLSearchParams(location.search).get('invite')||'',status:'pending',requestedAt:serverTimestamp()
-        });
-        joinStatus.textContent='参加申請を送信しました。承認されるまでこの画面で待つか、後からもう一度開いてください。';
+        const invitationToken=params.get('invite')||'';
+        const requestedProjectId=params.get('project')||'';
+        const projectInvite=invitationToken?await readProjectInvite(invitationToken,requestedProjectId):null;
+        if(requestedProjectId&&!projectInvite)throw new Error('プロジェクト招待リンクが見つからないか、無効になっています。');
+        const request={
+          uid:authUser.uid,
+          displayName:name,
+          email:authUser.email||'',
+          photoURL:authUser.photoURL||'',
+          vrchat,
+          invitationToken,
+          status:'pending',
+          requestedAt:serverTimestamp(),
+          ...(projectInvite?{
+            requestedRole:'external_collaborator',
+            inviteKind:'external',
+            eventId:projectInvite.eventId,
+            teamId:projectInvite.teamId,
+            projectId:projectInvite.projectId,
+            projectVisibility:projectInvite.projectVisibility
+          }:{})
+        };
+        await set(ref(db,`teams/${TEAM_ID}/joinRequests/${authUser.uid}`),request);
+        joinStatus.textContent=projectInvite
+          ? '外部協力者としてプロジェクト参加を申請しました。イベントオーナー／運営の承認をお待ちください。'
+          : '参加申請を送信しました。承認されるまでこの画面で待つか、後からもう一度開いてください。';
       }catch(error){console.error(error);joinStatus.textContent=`申請を送信できません：${error.message}`;}
       finally{joinSubmit.disabled=false;}
     }
@@ -994,31 +1355,309 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       finally{joinRefresh.disabled=false;}
     }
 
+    async function resolveProjectLocation(projectId) {
+      const readableBuckets=allowedVisibilityBuckets(activeUser?.role||'cast');
+      const snapshots=await Promise.all(readableBuckets.map(visibility=>get(ref(db,`${WORKSPACE_PATH}/projects/${visibility}/${projectId}`))));
+      const matches=readableBuckets.flatMap((visibility,index)=>snapshots[index].exists()?[{visibility,record:snapshots[index].val()}]:[]);
+      if(!matches.length)throw new Error(normalizedRole(activeUser?.role)==='operations'?'このプロジェクトは運営権限で承認できません。イベントオーナーへ承認を依頼してください。':'招待先プロジェクトを読み込めません。');
+      if(matches.length>1)throw new Error('招待先プロジェクトの公開範囲が重複しています。整理後にもう一度承認してください。');
+      return matches[0];
+    }
+
+    async function claimProjectInvite(token,request,uid,preparedHash='') {
+      const requestedProjectId=String(request?.projectId||'');
+      const claimHash=preparedHash||await projectInviteClaimHash(token,uid);
+      let addedClaim=false;
+      const result=await runTransaction(ref(db,projectInvitePath(token)),invite=>{
+        addedClaim=false;
+        const validationError=projectInviteValidationError(invite,token,requestedProjectId,claimHash);
+        if(validationError)return;
+        const claimHashes=normalizedClaimHashes(invite.claimHashes);
+        if(claimHashes[claimHash]===true){
+          const used=Math.max(0,Object.values(claimHashes).filter(value=>value===true).length-1);
+          return {...invite,claimHashes,used,active:invite.active!==false};
+        }
+        claimHashes[claimHash]=true;
+        addedClaim=true;
+        const used=Math.max(0,Object.values(claimHashes).filter(value=>value===true).length-1);
+        return {...invite,claimHashes,used,active:invite.active!==false};
+      },{applyLocally:false});
+      if(!result.committed)throw new Error('招待リンクが期限切れ、無効、または使用上限に達しました。');
+      return {invite:result.snapshot.val(),claimHash,added:addedClaim};
+    }
+
+    async function releaseProjectInviteClaim(token,claimHash) {
+      if(!claimHash)return;
+      await runTransaction(ref(db,projectInvitePath(token)),invite=>{
+        if(!invite||invite.kind!=='external')return invite;
+        const claimHashes=normalizedClaimHashes(invite.claimHashes);
+        if(claimHashes[claimHash]!==true)return invite;
+        delete claimHashes[claimHash];
+        const used=Math.max(0,Object.values(claimHashes).filter(value=>value===true).length-1);
+        return {...invite,claimHashes,used,active:invite.active!==false};
+      },{applyLocally:false});
+    }
+
+    function requestReviewClaimId() {
+      return globalThis.crypto?.randomUUID?.()||`${activeUser?.uid||'manager'}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    function requestReviewIdentity(request) {
+      return JSON.stringify({
+        uid:String(request?.uid||''),
+        email:String(request?.email||''),
+        displayName:String(request?.displayName||''),
+        photoURL:String(request?.photoURL||''),
+        vrchat:String(request?.vrchat||''),
+        inviteKind:String(request?.inviteKind||''),
+        requestedRole:String(request?.requestedRole||''),
+        invitationToken:String(request?.invitationToken||''),
+        eventId:String(request?.eventId||''),
+        teamId:String(request?.teamId||''),
+        projectId:String(request?.projectId||''),
+        projectVisibility:String(request?.projectVisibility||''),
+        requestedAt:request?.requestedAt??null
+      });
+    }
+
+    async function acquireRequestReview(uid,action,role='',requestHint=null) {
+      const id=requestReviewClaimId();
+      const expectedIdentity=requestReviewIdentity(requestHint);
+      const externalApprove=action==='approve'&&(requestHint?.inviteKind==='external'||requestHint?.requestedRole==='external_collaborator')&&validInviteToken(requestHint?.invitationToken);
+      const inviteClaimHash=externalApprove?await projectInviteClaimHash(requestHint.invitationToken,uid,id):'';
+      const claim={id,uid:activeUser.uid,action,phase:'reviewing',at:Date.now(),...(action==='approve'?{role}:{}),...(inviteClaimHash?{inviteClaimHash}:{})};
+      const requestRef=ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`);
+      const result=await runTransaction(requestRef,current=>{
+        if(!current||current.status!=='pending')return;
+        if(requestReviewIdentity(current)!==expectedIdentity)return;
+        const existing=current.reviewClaim&&typeof current.reviewClaim==='object'?current.reviewClaim:null;
+        if(existing?.id)return;
+        return {...current,reviewClaim:claim};
+      },{applyLocally:false});
+      const request=result.snapshot.val();
+      if(!result.committed||request?.reviewClaim?.id!==claim.id)throw new Error('この申請は別の管理者が処理中か、すでに更新されています。');
+      return {claim,request};
+    }
+
+    async function releaseRequestReview(uid,claimId) {
+      if(!claimId)return;
+      await runTransaction(ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`),current=>{
+        if(!current||current.status!=='pending'||current.reviewClaim?.id!==claimId)return current;
+        if(current.reviewClaim.phase==='canceling')return current;
+        const next={...current};
+        delete next.reviewClaim;
+        return next;
+      },{applyLocally:false});
+    }
+
+    async function beginRequestReviewCommit(uid,claimId) {
+      const result=await runTransaction(ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`),current=>{
+        if(!current||current.status!=='pending'||current.reviewClaim?.id!==claimId||current.reviewClaim?.phase!=='reviewing')return;
+        return {...current,reviewClaim:{...current.reviewClaim,phase:'committing',commitStartedAt:Date.now()}};
+      },{applyLocally:false});
+      if(!result.committed||result.snapshot.val()?.reviewClaim?.id!==claimId)throw new Error('申請処理が解除または更新されました。もう一度一覧から操作してください。');
+      return result.snapshot.val();
+    }
+
+    async function assertRequestReviewCommit(uid,claimId) {
+      const snapshot=await get(ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`));
+      const request=snapshot.val();
+      if(!request||request.status!=='pending'||request.reviewClaim?.id!==claimId||request.reviewClaim?.phase!=='committing')throw new Error('申請処理が解除または更新されました。もう一度一覧から操作してください。');
+      return request;
+    }
+
+    async function unlockRequestReview(uid) {
+      const preview=requestsData[uid];
+      if(!preview?.reviewClaim?.id||!activeUser||!managerRole(activeUser.role))return;
+      if(!confirm(`${preview.displayName||preview.email}さんの処理ロックを解除しますか？\n別タブで処理中でないことを確認してから実行してください。`))return;
+      setManagementMessage('申請処理ロックを解除しています…');
+      const claimId=preview.reviewClaim.id;
+      try{
+        const result=await runTransaction(ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`),current=>{
+          if(!current||current.status!=='pending'||current.reviewClaim?.id!==claimId)return;
+          if(current.reviewClaim.phase==='canceling')return current;
+          return {...current,reviewClaim:{...current.reviewClaim,phase:'canceling',cancelStartedAt:Date.now()}};
+        },{applyLocally:false});
+        if(!result.committed)throw new Error('申請の状態が更新されています。一覧を再読み込みしてください。');
+        const request=result.snapshot.val();
+        if((request.inviteKind==='external'||request.requestedRole==='external_collaborator')&&validInviteToken(request.invitationToken)){
+          const exactHash=request.reviewClaim?.inviteClaimHash||'';
+          if(exactHash)await releaseProjectInviteClaim(request.invitationToken,exactHash);
+          else if(request.reviewClaim?.action==='approve')await releaseProjectInviteClaim(request.invitationToken,await projectInviteClaimHash(request.invitationToken,uid));
+        }
+        const unlocked=await runTransaction(ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`),current=>{
+          if(!current||current.status!=='pending'||current.reviewClaim?.id!==claimId||current.reviewClaim?.phase!=='canceling')return;
+          const next={...current};
+          delete next.reviewClaim;
+          return next;
+        },{applyLocally:false});
+        if(!unlocked.committed)throw new Error('申請の状態が更新されています。一覧を再読み込みしてください。');
+        setManagementMessage('処理ロックを解除しました。もう一度承認または見送りを実行できます。','success');
+      }catch(error){
+        console.error(error);
+        setManagementMessage(`処理ロックを解除できません：${error.message}`,'error');
+      }
+    }
+
+    function cleanupRejectedInviteClaim(uid,request) {
+      const external=request?.inviteKind==='external'||request?.requestedRole==='external_collaborator';
+      if(request?.status!=='rejected'||request.inviteClaimReleasedAt||!external||!validInviteToken(request.invitationToken))return Promise.resolve(true);
+      const cleanupKey=`${uid}:${request.invitationToken}:${Number(request.reviewedAt)||0}`;
+      if(rejectedInviteCleanupPromises.has(cleanupKey))return rejectedInviteCleanupPromises.get(cleanupKey);
+      const cleanup=(async()=>{
+        try{
+          const expectedToken=request.invitationToken;
+          const expectedReviewedAt=Number(request.reviewedAt)||0;
+          const claimHash=await projectInviteClaimHash(request.invitationToken,uid);
+          await releaseProjectInviteClaim(request.invitationToken,claimHash);
+          const marked=await runTransaction(ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`),current=>{
+            if(
+              !current
+              ||current.status!=='rejected'
+              ||current.invitationToken!==expectedToken
+              ||Number(current.reviewedAt)!==expectedReviewedAt
+            )return;
+            return {...current,inviteClaimReleasedAt:Date.now()};
+          },{applyLocally:false});
+          if(!marked.committed){
+            const current=marked.snapshot.val();
+            const sameRejected=current?.status==='rejected'&&current.invitationToken===expectedToken&&Number(current.reviewedAt)===expectedReviewedAt;
+            if(sameRejected)throw new Error('見送り申請へクリーンアップ完了を記録できませんでした。');
+          }
+          return true;
+        }catch(error){
+          console.error('見送り後の招待リンク使用回数を戻せませんでした',error);
+          return false;
+        }
+      })();
+      rejectedInviteCleanupPromises.set(cleanupKey,cleanup);
+      void cleanup.finally(()=>{if(rejectedInviteCleanupPromises.get(cleanupKey)===cleanup)rejectedInviteCleanupPromises.delete(cleanupKey);});
+      return cleanup;
+    }
+
+    function retryRejectedInviteClaimCleanup() {
+      if(!activeUser||!managerRole(activeUser.role))return;
+      Object.entries(requestsData).forEach(([uid,request])=>{void cleanupRejectedInviteClaim(uid,request);});
+    }
+
     async function approveRequest(uid,row) {
-      const request=requestsData[uid];if(!request||!activeUser||!managerRole(activeUser.role))return;
+      const previewRequest=requestsData[uid];if(!previewRequest||!activeUser||!managerRole(activeUser.role))return;
       const selectedRole=row.querySelector('[data-request-role]')?.value||'';
       if(!selectedRole){setManagementMessage('申請者のロールを選択してから許可してください。','error');return;}
-      const role=normalizedRole(selectedRole);
-      if(normalizedRole(activeUser.role)==='operations'&&!['staff','cast'].includes(role)){setManagementMessage('運営が追加できるのは「スタッフ」または「キャスト」です。','error');return;}
       setManagementMessage('参加申請を承認しています…');
+      let review=null,inviteContext=null,commitAttempted=false,approvedRole='';
       try{
-        await set(ref(db,`teams/${TEAM_ID}/members/${uid}`),{
-          displayName:request.displayName||request.email||'スタッフ',email:request.email||'',photoURL:request.photoURL||'',role,active:true,createdAt:serverTimestamp(),approvedAt:serverTimestamp(),approvedBy:activeUser.name,approvedByUid:activeUser.uid
-        });
-        await set(ref(db,`teams/${TEAM_ID}/profiles/${uid}`),{displayName:request.displayName||request.email||'スタッフ',role,active:true,photoURL:request.photoURL||'',discord:'',vrchat:request.vrchat||'',updatedAt:serverTimestamp(),updatedByUid:activeUser.uid});
-        await set(ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`),null);
+        review=await acquireRequestReview(uid,'approve',selectedRole,previewRequest);
+        const request=review.request;
+        const projectInviteRequest=request.inviteKind==='external'||request.requestedRole==='external_collaborator';
+        const role=projectInviteRequest?'external_collaborator':normalizedRole(selectedRole);
+        approvedRole=role;
+        if(selectedRole==='external_collaborator'&&!projectInviteRequest)throw new Error('外部協力者は有効なプロジェクト招待からのみ承認できます。');
+        if(normalizedRole(activeUser.role)==='operations'&&!['staff','cast','external_collaborator'].includes(role))throw new Error('運営が追加できるのは「スタッフ」「キャスト」「外部協力者」です。');
+        let projectLocation=null,currentMember={};
+        let inviteClaim=null;
+        if(projectInviteRequest){
+          if(!validInviteToken(request.invitationToken))throw new Error('申請に有効な招待トークンがありません。');
+          const claimHash=review.claim.inviteClaimHash||await projectInviteClaimHash(request.invitationToken,uid,review.claim.id);
+          inviteContext={token:request.invitationToken,claimHash,projectId:request.projectId};
+          const invite=await readProjectInvite(request.invitationToken,request.projectId,claimHash);
+          if(!invite)throw new Error('プロジェクト招待リンクが見つかりません。');
+          const [resolvedProject,memberSnapshot]=await Promise.all([
+            resolveProjectLocation(invite.projectId),
+            get(ref(db,`teams/${TEAM_ID}/members/${uid}`))
+          ]);
+          projectLocation=resolvedProject;
+          currentMember=memberSnapshot.val()||{};
+          await beginRequestReviewCommit(uid,review.claim.id);
+          inviteClaim=await claimProjectInvite(request.invitationToken,request,uid,claimHash);
+        }else{
+          await beginRequestReviewCommit(uid,review.claim.id);
+        }
+        const claimedInvite=inviteClaim?.invite||null;
+        const displayName=request.displayName||request.email||(role==='external_collaborator'?'外部協力者':'スタッフ');
+        const projectAccess=claimedInvite?{...projectAccessMap(currentMember.projectAccess),[claimedInvite.projectId]:true}:{};
+        const teamUpdates={
+          [`members/${uid}`]:{
+            ...currentMember,
+            displayName,email:request.email||'',photoURL:request.photoURL||'',role,active:true,
+            ...(claimedInvite?{projectAccess}:{}),
+            approvalClaimId:review.claim.id,
+            createdAt:currentMember.createdAt||serverTimestamp(),approvedAt:serverTimestamp(),approvedBy:activeUser.name,approvedByUid:activeUser.uid
+          },
+          [`profiles/${uid}`]:{
+            ...(profilesData[uid]||{}),
+            displayName,role,active:true,photoURL:request.photoURL||'',discord:'',vrchat:request.vrchat||'',
+            updatedAt:serverTimestamp(),updatedByUid:activeUser.uid
+          },
+          [`joinRequests/${uid}`]:null
+        };
+        if(claimedInvite&&projectLocation){
+          teamUpdates[`workspace/projects/${projectLocation.visibility}/${claimedInvite.projectId}/externalCollaborators/${uid}`]=true;
+        }
+        await assertRequestReviewCommit(uid,review.claim.id);
+        commitAttempted=true;
+        await update(ref(db,`teams/${TEAM_ID}`),teamUpdates);
         setManagementMessage(`${request.displayName||request.email}さんを${roleLabels[role]}として承認しました。`,'success');
-      }catch(error){console.error(error);setManagementMessage(`承認できません：${error.message}`,'error');}
+      }catch(error){
+        let grantApplied=false,grantCheckFailed=false;
+        if(commitAttempted&&review){
+          try{
+            const member=(await get(ref(db,`teams/${TEAM_ID}/members/${uid}`))).val()||{};
+            grantApplied=inviteContext
+              ? member.active!==false&&normalizedRole(member.role)==='external_collaborator'&&projectAccessMap(member.projectAccess)[inviteContext.projectId]===true
+              : member.active!==false&&normalizedRole(member.role)===approvedRole;
+          }catch(verificationError){
+            grantCheckFailed=true;
+            console.error('承認結果を確認できません',verificationError);
+          }
+        }
+        if(grantApplied){
+          setManagementMessage(`${review.request.displayName||review.request.email}さんの承認は完了しています。`,'success');
+          return;
+        }
+        if(!grantCheckFailed){
+          let rollbackFailed=false;
+          if(inviteContext){
+            try{await releaseProjectInviteClaim(inviteContext.token,inviteContext.claimHash);}
+            catch(rollbackError){rollbackFailed=true;console.error('招待リンク使用回数の巻き戻しに失敗しました',rollbackError);}
+          }
+          if(review&&!rollbackFailed){
+            try{await releaseRequestReview(uid,review.claim.id);}
+            catch(releaseError){console.error('申請処理ロックの解除に失敗しました',releaseError);}
+          }
+        }
+        console.error(error);
+        setManagementMessage(grantCheckFailed?'承認結果を確認できません。通信を確認して一覧を再読み込みしてください。':`承認できません：${error.message}`,'error');
+      }
     }
 
     async function rejectRequest(uid) {
-      const request=requestsData[uid];if(!request||!activeUser||!managerRole(activeUser.role))return;
-      if(!confirm(`${request.displayName||request.email}さんの参加申請を見送りますか？`))return;
+      const previewRequest=requestsData[uid];if(!previewRequest||!activeUser||!managerRole(activeUser.role))return;
+      if(!confirm(`${previewRequest.displayName||previewRequest.email}さんの参加申請を見送りますか？`))return;
       setManagementMessage('参加申請を更新しています…');
+      let review=null;
       try{
-        await set(ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`),{...request,status:'rejected',reviewedAt:serverTimestamp(),reviewedBy:activeUser.name,reviewedByUid:activeUser.uid,reviewNote:'参加申請が見送られました。必要な場合はオーナーへ確認してください。'});
+        review=await acquireRequestReview(uid,'reject','',previewRequest);
+        const request=review.request;
+        const result=await runTransaction(ref(db,`teams/${TEAM_ID}/joinRequests/${uid}`),current=>{
+          if(!current||current.status!=='pending'||current.reviewClaim?.id!==review.claim.id||current.reviewClaim?.phase!=='reviewing')return;
+          const rejected={...current,status:'rejected',reviewedAt:Date.now(),reviewedBy:activeUser.name,reviewedByUid:activeUser.uid,reviewNote:'参加申請が見送られました。必要な場合はオーナーへ確認してください。'};
+          delete rejected.reviewClaim;
+          return rejected;
+        },{applyLocally:false});
+        if(!result.committed)throw new Error('申請の状態が更新されています。一覧を再読み込みしてください。');
+        if(!await cleanupRejectedInviteClaim(uid,result.snapshot.val())){
+          setManagementMessage('申請は見送りました。招待リンクの使用回数は通信復旧後に自動で戻します。','error');
+          return;
+        }
         setManagementMessage('参加申請を見送りました。','success');
-      }catch(error){console.error(error);setManagementMessage(`更新できません：${error.message}`,'error');}
+      }catch(error){
+        if(review){
+          try{await releaseRequestReview(uid,review.claim.id);}
+          catch(releaseError){console.error('申請処理ロックの解除に失敗しました',releaseError);}
+        }
+        console.error(error);setManagementMessage(`更新できません：${error.message}`,'error');
+      }
     }
 
     async function saveMember(uid,row) {
@@ -1027,7 +1666,8 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       const role=normalizedRole(row.querySelector('[data-member-role]')?.value||current.role);
       const active=row.querySelector('[data-member-active]')?.checked!==false;
       if(uid===activeUser.uid&&normalizedRole(activeUser.role)==='owner'&&(role!=='owner'||!active)){setManagementMessage('自分自身のオーナー権限を解除・停止することはできません。','error');return;}
-      if(normalizedRole(activeUser.role)==='operations'&&(['owner','operations'].includes(normalizedRole(current.role))||!['staff','cast'].includes(role))){setManagementMessage('運営はオーナー／運営の変更や追加を行えません。','error');return;}
+      if(normalizedRole(current.role)!=='external_collaborator'&&role==='external_collaborator'){setManagementMessage('外部協力者は有効なプロジェクト招待からのみ追加できます。','error');return;}
+      if(normalizedRole(activeUser.role)==='operations'&&(['owner','operations'].includes(normalizedRole(current.role))||!['staff','cast','external_collaborator'].includes(role))){setManagementMessage('運営はオーナー／運営の変更や追加を行えません。','error');return;}
       setManagementMessage('スタッフ情報を保存しています…');
       try{
         await set(ref(db,`teams/${TEAM_ID}/members/${uid}`),{...current,displayName:name,role,active,updatedAt:serverTimestamp(),updatedBy:activeUser.name,updatedByUid:activeUser.uid});
@@ -1061,11 +1701,13 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       const uid=row.dataset.requestUid;
       if(button.dataset.requestAction==='approve')approveRequest(uid,row);
       if(button.dataset.requestAction==='reject')rejectRequest(uid);
+      if(button.dataset.requestAction==='unlock')unlockRequestReview(uid);
     });
     requestList?.addEventListener('change',event=>{
       if(!event.target.matches('[data-request-role]'))return;
-      const approve=event.target.closest('[data-request-uid]')?.querySelector('[data-request-action="approve"]');
-      if(approve)approve.disabled=!event.target.value;
+      const row=event.target.closest('[data-request-uid]');
+      const approve=row?.querySelector('[data-request-action="approve"]');
+      if(approve)approve.disabled=row?.dataset.requestLocked==='true'||!event.target.value;
     });
     memberList?.addEventListener('click',event=>{
       const button=event.target.closest('[data-member-action]');if(!button)return;
@@ -1129,6 +1771,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
       appReadyPromise.then(startLocalPreview);
       window.setTimeout(startLocalPreview,1200);
     }else{
+      window.startPlannerCloudSession?.('cloud-pending');
       try{
         const app=initializeApp(FIREBASE_CONFIG);
         auth=getAuth(app);db=getDatabase(app);
@@ -1141,11 +1784,13 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/fireba
           await appReadyPromise;
           stopAllListeners();
           if(user){
+            window.startPlannerCloudSession?.(`${user.uid}:pending`);
             authUser=user;
             if(window.getPlannerSurface?.()==='global'){setAuthStatus('全体管理者権限を確認しています…');await enterGlobalAdmin(user);}
             else{setAuthStatus('スタッフ登録を確認しています…');monitorAccess(user);}
           }
           else{
+            window.endPlannerCloudSession?.();
             authUser=null;activeUser=null;ownMember=null;ownRequest=null;window.setStaffCloudUser?.(null);window.setStaffReadOnly?.(false);setGate(true);if(joinPanel)joinPanel.hidden=true;showUid('');setAuthStatus('荒嵜造船所スタッフのGoogleアカウントでログインしてください。');window.setCloudSyncStatus?.('syncing','ログイン待ち','Googleログイン後に共有データを読み込みます。');
           }
         });

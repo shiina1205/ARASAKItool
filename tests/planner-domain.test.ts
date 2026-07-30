@@ -5,12 +5,16 @@ import {
   CATEGORY_MIGRATION_VERSION,
   EVENT_PROJECT_TEMPLATE,
   INITIAL_CATEGORY_MASTER,
+  SURFACE_VIEW_ACCESS,
+  buildCategoryHierarchyTemplate,
   calculateProjectProgress,
   getCategoryChildren,
   instantiateProjectTemplate,
   isCategorySelectionValid,
+  isViewAllowedOnSurface,
   migrateLegacyPlannerState,
   reconcileCategorySelection,
+  validateCategoryMaster,
   validatePlannerDomain,
 } from '../Arasaki_Staff_Planner_v0_8_Deploy/src/domain/planner-v1/index.ts';
 
@@ -31,6 +35,115 @@ test('初期カテゴリは大・中・小の正しい親子関係を持つ', ()
     ],
   );
   assert.ok(getCategoryChildren('CAT-PLN-EVENT').every(item => item.parentId === 'CAT-PLN-EVENT'));
+});
+
+test('カテゴリ階層テンプレートは選択した深さで有効なカテゴリマスタを作る', () => {
+  const simple = buildCategoryHierarchyTemplate('simple', INITIAL_CATEGORY_MASTER);
+  const normal = buildCategoryHierarchyTemplate('normal', INITIAL_CATEGORY_MASTER);
+  const detailed = buildCategoryHierarchyTemplate('detailed', INITIAL_CATEGORY_MASTER);
+
+  assert.ok(simple.every(category => category.level === 1));
+  assert.ok(normal.some(category => category.level === 2));
+  assert.ok(normal.every(category => category.level <= 2));
+  assert.ok(detailed.some(category => category.level === 3));
+  for (const categories of [simple, normal, detailed]) {
+    assert.deepEqual(validateCategoryMaster(categories), []);
+  }
+});
+
+test('浅いカテゴリテンプレートでも使用中の小分類と祖先を保持する', () => {
+  const retained = buildCategoryHierarchyTemplate(
+    'simple',
+    INITIAL_CATEGORY_MASTER,
+    ['CAT-PLN-EVENT-NEW'],
+  );
+  const byId = new Map(retained.map(category => [category.id, category]));
+
+  assert.equal(byId.get('CAT-PLN-EVENT-NEW')?.parentId, 'CAT-PLN-EVENT');
+  assert.equal(byId.get('CAT-PLN-EVENT')?.parentId, 'CAT-PLN');
+  assert.equal(byId.get('CAT-PLN')?.parentId, null);
+  assert.equal(byId.has('CAT-HR-RECRUIT'), false);
+  assert.deepEqual(validateCategoryMaster(retained), []);
+});
+
+test('不正なカテゴリ階層テンプレート値を実行時に拒否する', () => {
+  for (const template of ['unknown', 'toString', '__proto__']) {
+    assert.throws(
+      () => buildCategoryHierarchyTemplate(template as never, INITIAL_CATEGORY_MASTER),
+      /未対応のカテゴリ階層テンプレート/,
+    );
+  }
+});
+
+test('個人・イベント管理・総合管理ページのメニュー境界を分離する', () => {
+  const expectedAccess = {
+    app: [
+      'home',
+      'mypage',
+      'calendar',
+      'triage',
+      'future',
+      'yearly',
+      'weekly',
+      'daily',
+      'tasksAssigned',
+      'tasksOperations',
+      'tasksStaff',
+      'tasksCast',
+      'events',
+      'projects',
+      'meetings',
+      'schedulePolls',
+      'notes',
+      'settings',
+    ],
+    owner: [
+      'adminEvent',
+      'adminAudit',
+      'adminInvites',
+      'adminApplications',
+      'adminLinks',
+      'adminRoles',
+      'permissions',
+      'settings',
+      'backup',
+    ],
+    global: [
+      'globalEvents',
+      'globalEventList',
+      'globalEventDetails',
+      'globalInvites',
+      'globalApplications',
+      'globalAudit',
+      'globalTrash',
+    ],
+  } as const;
+
+  assert.deepEqual(SURFACE_VIEW_ACCESS, expectedAccess);
+  for (const views of Object.values(SURFACE_VIEW_ACCESS)) {
+    assert.equal(new Set(views).size, views.length);
+  }
+
+  for (const view of ['home', 'mypage', 'settings']) {
+    assert.equal(isViewAllowedOnSurface('app', view), true);
+  }
+  for (const view of SURFACE_VIEW_ACCESS.owner.filter(view => view !== 'settings')) {
+    assert.equal(isViewAllowedOnSurface('app', view), false);
+  }
+  for (const view of SURFACE_VIEW_ACCESS.global) {
+    assert.equal(isViewAllowedOnSurface('app', view), false);
+    assert.equal(isViewAllowedOnSurface('owner', view), false);
+  }
+
+  for (const view of ['adminEvent', 'adminAudit', 'settings']) {
+    assert.equal(isViewAllowedOnSurface('owner', view), true);
+  }
+  for (const view of ['globalEventList', 'globalAudit', 'globalTrash']) {
+    assert.equal(isViewAllowedOnSurface('global', view), true);
+  }
+  for (const surface of ['app', 'owner', 'global'] as const) {
+    assert.equal(isViewAllowedOnSurface(surface, 'unknownView'), false);
+  }
 });
 
 test('親カテゴリ変更時は不正な中・小カテゴリを解除する', () => {
