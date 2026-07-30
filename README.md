@@ -61,3 +61,13 @@ Cloudflare Pagesでは、プロジェクトの「Settings → Variables and Secr
 ローカル開発では `Arasaki_Staff_Planner_v0_8_Deploy/assets/js/config.example.js` を
 `config.js` にコピーして値を設定できます。実値を含む `config.js` とビルド成果物の
 `dist` はGit管理対象外です。
+
+## VRChat表示名連携
+
+マイページでVRChatプロフィールURLから表示名を取得する場合は、専用Chrome拡張
+機能を使用します。インストール方法は
+[`chrome-extension/README.md`](chrome-extension/README.md) を参照してください。
+
+拡張機能はChromeでログイン中のVRChatプロフィールを一時的な非表示タブで確認し、
+ユーザーIDと表示名だけをPlannerへ返します。VRChatのパスワード、Cookie、
+認証トークンはPlannerやFirebaseへ保存しません。

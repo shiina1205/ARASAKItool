@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "ARASAKI Staff Planner VRChat連携",
+  "version": "1.0.0",
+  "description": "ログイン中のVRChatから表示名だけをStaff Plannerへ反映します。",
+  "permissions": [
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://vrchat.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://arasaki-f7677.web.app/*",
+        "https://arasaki-f7677.firebaseapp.com/*"
+      ],
+      "js": [
+        "planner-bridge.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://vrchat.com/home/user/*"
+      ],
+      "js": [
+        "vrchat-reader.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

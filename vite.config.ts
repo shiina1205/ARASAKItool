@@ -8,6 +8,7 @@ const REQUIRED_FIREBASE_FIELDS = ['apiKey', 'authDomain', 'databaseURL', 'projec
 function firebaseRuntimeConfigSource(): string {
   const rawConfig = process.env.FIREBASE_CONFIG_JSON;
   const teamId = process.env.FIREBASE_TEAM_ID || 'arasaki-shipyard';
+  const teamName = process.env.FIREBASE_TEAM_NAME || '荒嵜造船所';
 
   if (!rawConfig) {
     console.warn('FIREBASE_CONFIG_JSON が未設定のため、未設定用config.jsを生成します。');
@@ -20,6 +21,7 @@ function firebaseRuntimeConfigSource(): string {
         appId: 'ここにFirebase App ID',
       }, null, 2)};`,
       `export const TEAM_ID = ${JSON.stringify(teamId)};`,
+      `export const TEAM_NAME = ${JSON.stringify(teamName)};`,
       '',
     ].join('\n');
   }
@@ -39,6 +41,7 @@ function firebaseRuntimeConfigSource(): string {
   return [
     `export const FIREBASE_CONFIG = ${JSON.stringify(config, null, 2)};`,
     `export const TEAM_ID = ${JSON.stringify(teamId)};`,
+    `export const TEAM_NAME = ${JSON.stringify(teamName)};`,
     '',
   ].join('\n');
 }

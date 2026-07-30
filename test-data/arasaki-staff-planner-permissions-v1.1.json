@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1.1,
+  "exportedAt": "2026-07-30T12:00:00.000Z",
+  "globalAdmins": {
+    "uid-global-admin": { "displayName": "全体管理者", "status": "active" }
+  },
+  "users": {
+    "uid-owner": { "displayName": "イベント代表", "status": "active", "profile": { "discord": "owner#0001", "vrchat": "Owner" } },
+    "uid-ops": { "displayName": "運営担当", "status": "active", "profile": { "discord": "ops#0002", "vrchat": "Operations" } },
+    "uid-external": { "displayName": "外部協力者", "status": "active", "profile": { "discord": "external#0003", "vrchat": "External", "visibility": "internal_only" } },
+    "uid-staff": { "displayName": "スタッフ", "status": "active", "profile": { "discord": "staff#0004", "vrchat": "Staff" } },
+    "uid-cast": { "displayName": "キャスト", "status": "active", "profile": { "discord": "cast#0005", "vrchat": "Cast" } }
+  },
+  "permissionEvents": {
+    "event-summer-night-2026": {
+      "title": "荒嵜サマーナイト2026",
+      "status": "active",
+      "owners": { "uid-owner": { "isRepresentative": true } },
+      "members": {
+        "uid-owner": { "role": "event_owner", "active": true },
+        "uid-ops": { "role": "operations", "active": true },
+        "uid-external": { "role": "external_collaborator", "active": true },
+        "uid-staff": { "role": "staff", "active": true },
+        "uid-cast": { "role": "cast", "active": true }
+      },
+      "invitations": {
+        "invite-event-staff-001": {
+          "kind": "event",
+          "eventId": "event-summer-night-2026",
+          "role": "staff",
+          "issuedBy": "uid-owner",
+          "issuedAt": "2026-07-30T09:00:00.000Z",
+          "expiresAt": "2026-08-06T09:00:00.000Z",
+          "maxUses": null,
+          "uses": 0,
+          "approvalRequired": true,
+          "active": true
+        },
+        "invite-external-project-001": {
+          "kind": "external",
+          "eventId": "event-summer-night-2026",
+          "projectId": "project-promotion-2026",
+          "role": "external_collaborator",
+          "permissions": { "canView": true, "canAddTask": true, "canComment": true, "canViewFiles": false },
+          "issuedBy": "uid-ops",
+          "issuedAt": "2026-07-30T09:30:00.000Z",
+          "expiresAt": "2026-08-06T09:30:00.000Z",
+          "maxUses": null,
+          "uses": 1,
+          "approvalRequired": true,
+          "active": true,
+          "applications": { "application-001": { "uid": "uid-external", "status": "approved", "approvedBy": "uid-owner" } }
+        }
+      }
+    }
+  },
+  "permissionProjects": {
+    "project-promotion-2026": {
+      "eventId": "event-summer-night-2026",
+      "name": "告知・広報プロジェクト",
+      "status": "active",
+      "visibility": {
+        "allowedRoles": ["event_owner", "operations", "staff"],
+        "allowedUsers": ["uid-external"],
+        "members": {
+          "uid-external": { "canView": true, "canAddTask": true, "canComment": true, "canViewFiles": false }
+        }
+      },
+      "members": ["uid-owner", "uid-ops", "uid-staff", "uid-external"]
+    },
+    "project-cast-only-2026": {
+      "eventId": "event-summer-night-2026",
+      "name": "キャスト配置",
+      "status": "active",
+      "visibility": { "allowedRoles": ["event_owner", "operations", "cast"], "allowedUsers": [], "members": {} },
+      "members": ["uid-owner", "uid-ops", "uid-cast"]
+    }
+  },
+  "permissionTasks": {
+    "task-poster": { "projectId": "project-promotion-2026", "title": "告知画像の初稿", "audience": "staff", "status": "doing", "createdBy": "uid-staff", "assigneeUid": "uid-staff" },
+    "task-external-copy": { "projectId": "project-promotion-2026", "title": "外部向け紹介文を追加", "audience": "individual", "individualUid": "uid-external", "status": "todo", "createdBy": "uid-external" },
+    "task-cast-call": { "projectId": "project-cast-only-2026", "title": "集合時間を確認", "audience": "cast", "status": "todo", "createdBy": "uid-ops", "assigneeUid": "uid-cast" }
+  },
+  "deleteRequests": {},
+  "auditLogs": {
+    "audit-001": { "actorUid": "uid-ops", "eventId": "event-summer-night-2026", "targetType": "invitation", "targetId": "invite-external-project-001", "operation": "issue", "at": "2026-07-30T09:30:00.000Z", "reason": "広報協力者を招待" }
+  },
+  "tasks": [
+    { "id": "task-poster", "workspaceId": "arasaki-shipyard", "title": "告知画像の初稿", "managementType": "task", "visibility": "staff", "audience": "staff", "status": "doing", "projectId": "project-promotion-2026", "createdBy": "uid-staff", "assigneeUid": "uid-staff", "completed": false },
+    { "id": "task-external-copy", "workspaceId": "arasaki-shipyard", "title": "外部向け紹介文を追加", "managementType": "task", "visibility": "staff", "audience": "individual", "status": "todo", "projectId": "project-promotion-2026", "createdBy": "uid-external", "completed": false },
+    { "id": "task-cast-call", "workspaceId": "arasaki-shipyard", "title": "集合時間を確認", "managementType": "task", "visibility": "cast", "audience": "cast", "status": "todo", "projectId": "project-cast-only-2026", "createdBy": "uid-ops", "assigneeUid": "uid-cast", "completed": false }
+  ],
+  "projects": [
+    { "id": "project-promotion-2026", "workspaceId": "arasaki-shipyard", "managementType": "project", "name": "告知・広報プロジェクト", "status": "active", "visibility": "staff", "relatedEventIds": ["event-summer-night-2026"], "ownerUid": "uid-owner", "memberUids": ["uid-owner", "uid-ops", "uid-staff", "uid-external"] },
+    { "id": "project-cast-only-2026", "workspaceId": "arasaki-shipyard", "managementType": "project", "name": "キャスト配置", "status": "active", "visibility": "cast", "relatedEventIds": ["event-summer-night-2026"], "ownerUid": "uid-owner", "memberUids": ["uid-owner", "uid-ops", "uid-cast"] }
+  ],
+  "events": [
+    { "id": "event-summer-night-2026", "workspaceId": "arasaki-shipyard", "title": "荒嵜サマーナイト2026", "date": "2026-08-15", "isPrivate": false, "ownerUid": "uid-owner" }
+  ]
+}

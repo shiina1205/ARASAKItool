@@ -9,3 +9,5 @@ export const FIREBASE_CONFIG = {
 };
 
 export const TEAM_ID = 'arasaki-shipyard';
+// 招待リンクから参加したワークスペースのタブに「荒嵜造船所用」のように表示されます。
+export const TEAM_NAME = '荒嵜造船所';

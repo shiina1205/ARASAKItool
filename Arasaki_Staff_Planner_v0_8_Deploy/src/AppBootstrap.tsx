@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
+import * as plannerDomain from './domain/planner-v1/index.ts';
 
 type BootState = 'loading' | 'ready' | 'error';
 
 let legacyBootPromise: Promise<void> | undefined;
 
+window.ARASAKI_PLANNER_DOMAIN = plannerDomain;
+
 function runtimeAsset(fileName: string): string {
-  return new URL(`assets/js/${fileName}`, `${window.location.origin}${import.meta.env.BASE_URL}`).href;
+  const url = new URL(`assets/js/${fileName}`, `${window.location.origin}${import.meta.env.BASE_URL}`);
+  url.searchParams.set('v', '0.9.9');
+  return url.href;
 }
 
 function loadScript(fileName: string, module = false): Promise<void> {

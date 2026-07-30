@@ -13,7 +13,11 @@ if [ ! -d node_modules ]; then
   npm install
 fi
 
+if [ ! -f "Arasaki_Staff_Planner_v0_8_Deploy/assets/js/config.js" ]; then
+  cp "Arasaki_Staff_Planner_v0_8_Deploy/assets/js/config.example.js" "Arasaki_Staff_Planner_v0_8_Deploy/assets/js/config.js"
+fi
+
 echo "Staff Plannerを起動します。"
-echo "ブラウザで http://localhost:5173 を開いてください。"
+echo "ブラウザで http://localhost:5173/?localPreview=1 を開いてください。"
 echo "終了する場合は Ctrl+C を押します。"
 npm run dev
