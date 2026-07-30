@@ -432,13 +432,15 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
     function syncWorkspaceTabsForView() {
       const permissionsOnly=currentView==='permissions';
       const allUnavailable=currentView==='mypage'||currentView==='triage';
+      const roleTaskList=['tasksOperations','tasksStaff','tasksCast'].includes(currentView);
       const allTab=document.querySelector('.workspace-tab[data-workspace="all"]');
       const personalTab=document.querySelector('.workspace-tab[data-workspace="personal"]');
       const eventTab=document.querySelector(`.workspace-tab[data-workspace="${eventWorkspaceId}"]`);
       if(allTab)allTab.hidden=allUnavailable||permissionsOnly;
-      if(personalTab)personalTab.hidden=permissionsOnly;
+      if(personalTab)personalTab.hidden=permissionsOnly||roleTaskList;
       if(eventTab)eventTab.hidden=false;
       if(permissionsOnly&&activeWorkspace!==eventWorkspaceId)applyActiveWorkspace(eventWorkspaceId);
+      if(roleTaskList&&activeWorkspace==='personal')applyActiveWorkspace(eventWorkspaceId);
       if(allUnavailable&&activeWorkspace==='all')applyActiveWorkspace('personal');
     }
     function pageAllowedForRole(view,role=currentStaffRole()) {
@@ -1140,7 +1142,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         if(globalSurface)brandTitle.innerHTML='MocchiriPlanner<small>総合管理者ツール</small>';
         else brandTitle.textContent=ownerSurface?'Owner Console':'Staff Planner';
       }
-      if(brandDescription)brandDescription.textContent=globalSurface?'全イベント管理ツール':ownerSurface?`${eventWorkspaceName}の管理ツール`:`${eventWorkspaceName}のワークスペース`;
+      if(brandDescription)brandDescription.textContent=globalSurface?'全イベント管理ツール':ownerSurface?`${eventWorkspaceName}の管理ツール`:'イベントのためのワークスペース';
       const surfaceModeSelect=document.getElementById('surfaceModeSelect');
       const ownerSurfaceModeOption=document.getElementById('ownerSurfaceModeOption');
       if(ownerSurfaceModeOption)ownerSurfaceModeOption.textContent=`「${eventWorkspaceName}」管理ページ`;
@@ -1340,7 +1342,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const active=config.view===currentView?' active':'';
       const pinned=config.pinned?(mobile?' pinned-mobile':''):'';
       const audience=TASK_VIEW_AUDIENCE[def.view];
-      return `<button class="nav-button${active}${pinned}${child?' nav-child':''}" data-view="${def.view}" ${['operations','staff','cast'].includes(audience)?`data-task-audience-drop="${audience}"`:''}><span class="nav-icon">${def.icon}</span><span>${escapeHtml(mobile?def.short:def.label)}</span>${!mobile&&config.pinned?'<span class="nav-pin-mark" title="ピン留め中">●</span>':''}</button>`;
+      return `<button class="nav-button${active}${pinned}${child?' nav-child':''}" data-view="${def.view}" ${['operations','staff','cast'].includes(audience)?`data-task-audience-drop="${audience}"`:''}><span class="nav-icon">${escapeHtml(config.icon||def.icon)}</span><span>${escapeHtml(mobile?def.short:def.label)}</span>${!mobile&&config.pinned?'<span class="nav-pin-mark" title="ピン留め中">●</span>':''}</button>`;
     }
     function dataLinkIcon(url=''){
       const value=String(url).toLowerCase();
@@ -1426,7 +1428,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
           return `<div class="menu-customize-row menu-group-row ${visible?'':'is-hidden'}" draggable="true" data-menu-key="${escapeHtml(key)}" data-menu-type="group" data-menu-group="${escapeHtml(config.id)}"><div class="menu-drag-handle" title="カテゴリごと移動">≡</div><div class="menu-item-name"><span class="nav-icon">${escapeHtml(config.icon||'▾')}</span><input class="menu-group-name-input" value="${escapeHtml(config.label)}" aria-label="カテゴリ名" /><span class="menu-group-badge">${childCount}ページ</span></div><label class="menu-toggle-label"><input type="checkbox" class="menu-visible-toggle" ${visible?'checked':''} />表示</label><label class="menu-toggle-label"><input type="checkbox" class="menu-group-expanded-toggle" ${config.expanded!==false?'checked':''} />開く</label><div class="menu-order-buttons"><button class="icon-btn menu-move-up" title="上へ">↑</button><button class="icon-btn menu-move-down" title="下へ">↓</button><button class="icon-btn menu-group-delete" title="カテゴリ削除">⌫</button></div></div>`;
         }
         const def=menuDefinition(config.view);
-        return `<div class="menu-customize-row ${config.parentId?'menu-child-row':''} ${visible?'':'is-hidden'} ${config.pinned?'is-pinned':''}" draggable="true" data-menu-key="${escapeHtml(key)}" data-menu-type="page" data-menu-view="${config.view}"><div class="menu-drag-handle" title="ドラッグして並べ替え・カテゴリへ移動">≡</div><div class="menu-item-name"><span class="nav-icon">${def.icon}</span><div class="menu-row-meta"><strong>${escapeHtml(def.label)}</strong><select class="menu-parent-select" aria-label="所属カテゴリ">${groupOptions(config.parentId||'')}</select></div></div><label class="menu-toggle-label"><input type="checkbox" class="menu-visible-toggle" ${visible?'checked':''} />表示</label><label class="menu-toggle-label pin-toggle-wrap"><input type="checkbox" class="menu-pin-toggle" ${config.pinned?'checked':''} />ピン留め</label><div class="menu-order-buttons"><button class="icon-btn menu-move-up" title="上へ">↑</button><button class="icon-btn menu-move-down" title="下へ">↓</button></div></div>`;
+        const iconEditable=['tasksOperations','tasksStaff','tasksCast'].includes(config.view);
+        return `<div class="menu-customize-row ${config.parentId?'menu-child-row':''} ${visible?'':'is-hidden'} ${config.pinned?'is-pinned':''}" draggable="true" data-menu-key="${escapeHtml(key)}" data-menu-type="page" data-menu-view="${config.view}"><div class="menu-drag-handle" title="ドラッグして並べ替え・カテゴリへ移動">≡</div><div class="menu-item-name">${iconEditable?`<input class="menu-page-icon-input" value="${escapeHtml(config.icon||def.icon)}" maxlength="4" aria-label="${escapeHtml(def.label)}のアイコン" title="アイコンを変更" />`:`<span class="nav-icon">${escapeHtml(config.icon||def.icon)}</span>`}<div class="menu-row-meta"><strong>${escapeHtml(def.label)}</strong><select class="menu-parent-select" aria-label="所属カテゴリ">${groupOptions(config.parentId||'')}</select></div></div><label class="menu-toggle-label"><input type="checkbox" class="menu-visible-toggle" ${visible?'checked':''} />表示</label><label class="menu-toggle-label pin-toggle-wrap"><input type="checkbox" class="menu-pin-toggle" ${config.pinned?'checked':''} />ピン留め</label><div class="menu-order-buttons"><button class="icon-btn menu-move-up" title="上へ">↑</button><button class="icon-btn menu-move-down" title="下へ">↓</button></div></div>`;
       }).join('');
     }
     function commitMenuConfig(message='メニュー設定を保存しました') {
@@ -1584,7 +1587,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const responseLabel=response?.status==='yes'?'参加':response?.status==='no'?'不参加':response?.status==='maybe'?'保留':'未回答';
       return `<article class="meeting-card" data-kind="meeting" data-id="${m.id}">
         <div class="meeting-top"><div><div class="meeting-title">${escapeHtml(m.title)}</div><div class="meeting-time">${escapeHtml(dateLabel(m.date))}${m.time?` ${escapeHtml(m.time)}`:''}</div><div class="meta-row"><span class="tag">${categoryIcons[m.category]||'•'} ${escapeHtml(settingLabel('categories',m.category,m.category||''))}</span>${pName?`<span class="tag">◇ ${escapeHtml(pName)}</span>`:''}${m.attendees?`<span class="tag">参加：${escapeHtml(m.attendees)}</span>`:''}</div></div><div class="card-actions"><button class="icon-btn meeting-edit">✎</button><button class="icon-btn meeting-delete">⌫</button></div></div>
-        <div class="meeting-rsvp" data-meeting-rsvp="${m.id}"><span class="tag">あなたの回答：${responseLabel}${response?.comment?`・${escapeHtml(response.comment)}`:''}</span><button class="btn small meeting-rsvp-btn" data-rsvp="yes">〇 参加</button><button class="btn small meeting-rsvp-btn" data-rsvp="no">× 不参加</button><button class="btn small meeting-rsvp-btn" data-rsvp="maybe">△ コメント</button></div>
+        <div class="meeting-rsvp ${response?'is-answered':''}" data-meeting-rsvp="${m.id}"><span class="tag">あなたの回答：${responseLabel}${response?.comment?`・${escapeHtml(response.comment)}`:''}</span><button class="btn small meeting-rsvp-btn ${response?.status==='yes'?'selected':''}" data-rsvp="yes">〇 参加</button><button class="btn small meeting-rsvp-btn ${response?.status==='no'?'selected':''}" data-rsvp="no">× 不参加</button><button class="btn small meeting-rsvp-btn ${response?.status==='maybe'?'selected':''}" data-rsvp="maybe">△ コメント</button></div>
         ${!compact && (m.agenda||m.decisions||m.pending||m.nextActions)?`<div class="meeting-body">
           ${m.agenda?`<div class="meeting-block"><strong>議題</strong><div>${nl2br(m.agenda)}</div></div>`:''}
           ${m.decisions?`<div class="meeting-block"><strong>決定事項</strong><div>${nl2br(m.decisions)}</div></div>`:''}
@@ -2799,7 +2802,14 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const userKey=scheduleUserKey();
       if(!userKey){wrap.innerHTML='';return;}
       const pending=state.schedulePolls.filter(poll=>poll.notify!==false&&poll.status!=='closed'&&!scheduleResponseComplete(poll,userKey));
-      wrap.innerHTML=pending.map(poll=>`<button class="persistent-notification" type="button" data-open-schedule="${poll.id}">
+      const staffName=String(window.currentStaffUser?.name||window.currentStaffUser?.displayName||window.currentStaffUser?.email||'').toLowerCase().replace(/^@/,'');
+      const meetingPending=(state.meetings||[]).filter(meeting=>{
+        if(meeting.responses?.[userKey]||!meeting.notifyAttendees)return false;
+        return staffName&&String(meeting.attendees||'').toLowerCase().split(',').some(name=>name.trim().replace(/^@/,'')===staffName);
+      });
+      wrap.innerHTML=meetingPending.map(meeting=>`<button class="persistent-notification" type="button" data-open-meeting="${meeting.id}">
+        <span class="notification-icon">◎</span><span><small>ミーティング参加のお願い</small><strong>${escapeHtml(meeting.title)}</strong><em>${escapeHtml(dateLabel(meeting.date,false))}${meeting.time?` ${escapeHtml(meeting.time)}`:''}</em></span><span class="notification-arrow">→</span>
+      </button>`).join('')+pending.map(poll=>`<button class="persistent-notification" type="button" data-open-schedule="${poll.id}">
         <span class="notification-icon">◷</span><span><small>日程調整のお願い</small><strong>${escapeHtml(poll.title)}</strong><em>回答期限 ${escapeHtml(dateLabel(poll.deadline,false))}</em></span><span class="notification-arrow">→</span>
       </button>`).join('');
     }
@@ -3237,7 +3247,10 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       }
       if(activeProjectDetailTab==='template'){content.innerHTML=projectTemplateDetailHtml(project);return;}
       if(activeProjectDetailTab==='tasks'){content.innerHTML=tasks.length?`<div class="project-task-list">${tasks.map(projectTaskRowHtml).join('')}</div>`:'<div class="empty">タスクはありません。</div>';return;}
-      if(activeProjectDetailTab==='schedule'){content.innerHTML=`<div class="project-detail-grid"><section class="project-detail-block"><h4>期間</h4><p>${escapeHtml(project.startDate||'未設定')} 〜 ${escapeHtml(project.endDate||'未設定')}</p></section><section class="project-detail-block"><h4>現在フェーズ</h4><p>${escapeHtml(phaseLabel(project.phaseId))}</p></section></div>`;return;}
+      if(activeProjectDetailTab==='schedule'){
+        const rangeStart=project.startDate||localDateString(),rangeEnd=project.endDate||rangeStart;
+        content.innerHTML=`<div class="gantt-editor"><div class="gantt-scale"><strong>ガントチャート</strong><span>${escapeHtml(rangeStart)} 〜 ${escapeHtml(rangeEnd)}</span></div>${tasks.length?tasks.map(task=>`<div class="gantt-row" data-gantt-task="${escapeHtml(task.id)}"><div class="gantt-task-name">${escapeHtml(task.title)}</div><label>開始<input class="gantt-task-start" type="date" value="${escapeHtml(task.startDate||task.start||task.due||rangeStart)}" /></label><label>期限<input class="gantt-task-due" type="date" value="${escapeHtml(task.due||rangeEnd)}" /></label><label>フェーズ<select class="gantt-task-phase">${(project.templateSnapshot?.phases||allProjectPhases()).map(phase=>`<option value="${escapeHtml(phase.id)}" ${phase.id===(task.phaseId||project.phaseId)?'selected':''}>${escapeHtml(phase.name)}</option>`).join('')}</select></label></div>`).join(''):'<div class="empty">関連タスクを追加すると、ここで日程を記入できます。</div>'}</div>`;return;
+      }
       if(activeProjectDetailTab==='meetings'){
         const meetings=state.meetings.filter(meeting=>meeting.projectId===project.id);content.innerHTML=meetings.length?meetings.map(meeting=>meetingCardHtml(meeting)).join(''):'<div class="empty">関連会議はありません。</div>';return;
       }
@@ -3256,7 +3269,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       const tasks=visibleTasks().filter(task=>task.projectId===project.id),progress=calculateProjectCompletion(project,tasks);
       document.getElementById('projectDetailId').value=project.id;
       document.getElementById('projectDetailTitle').textContent=project.name;
-      document.getElementById('projectDetailHero').innerHTML=`<div><strong>${escapeHtml(project.name)}</strong><div class="project-detail-meta"><span class="tag category-breadcrumb">${categoryPathHtml(project)}</span><span class="tag">${escapeHtml(phaseLabel(project.phaseId))}</span><span class="tag visibility-${normalizeVisibility(project.visibility)}">${escapeHtml(VISIBILITY_LABELS[normalizeVisibility(project.visibility)])}</span>${project.templateId?`<span class="tag">${escapeHtml(projectTemplate(project.templateId)?.name||project.templateId)} v${project.templateVersion||1}</span>`:''}</div></div><div class="project-detail-progress"><strong>${progress.rate}%</strong><span>${progress.completed}/${progress.total} 完了対象</span></div>`;
+      document.getElementById('projectDetailHero').innerHTML=`<div><strong>${escapeHtml(project.name)}</strong><div class="project-detail-meta"><span class="tag category-breadcrumb">${categoryPathHtml(project)}</span><span class="tag">${escapeHtml(phaseLabel(project.phaseId))}</span><span class="tag visibility-${normalizeVisibility(project.visibility)}">${escapeHtml(VISIBILITY_LABELS[normalizeVisibility(project.visibility)])}</span>${project.templateId?`<span class="tag">${escapeHtml(projectTemplate(project.templateId)?.name||project.templateId)} v${project.templateVersion||1}</span>`:''}</div>${canManageTasks()?`<button class="btn small project-invite-copy" data-project-invite="${escapeHtml(project.id)}" type="button">外部協力者の招待リンクを発行</button>`:''}</div><div class="project-detail-progress"><strong>${progress.rate}%</strong><span>${progress.completed}/${progress.total} 完了対象</span></div>`;
       document.getElementById('projectDetailTabs').innerHTML=PROJECT_DETAIL_TABS.map(([id,label])=>`<button class="project-detail-tab ${id===activeProjectDetailTab?'active':''}" type="button" data-project-detail-tab="${id}">${label}</button>`).join('');
       renderProjectDetailContent(project);
     }
@@ -3279,6 +3292,12 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
         const id=input.dataset.templateComplete;project.templateValues[id]={...(project.templateValues[id]||{}),completed:input.checked,completedAt:input.checked?new Date().toISOString():undefined};
       });
       const phase=document.getElementById('projectDetailPhase')?.value;if(phase)project.phaseId=phase;
+      document.querySelectorAll('#projectDetailContent [data-gantt-task]').forEach(row=>{
+        const task=state.tasks.find(item=>item.id===row.dataset.ganttTask);if(!task)return;
+        const start=row.querySelector('.gantt-task-start')?.value||'',due=row.querySelector('.gantt-task-due')?.value||'';
+        if(start&&due&&due<start)return;
+        task.startDate=start;task.start=start;task.due=due;task.phaseId=row.querySelector('.gantt-task-phase')?.value||task.phaseId;task.updatedAt=new Date().toISOString();
+      });
       project.updatedAt=new Date().toISOString();project.updatedBy=window.currentStaffUser?.name||'';
       saveState(`${project.name} を更新しました`);renderProjectDetail(project);
     }
@@ -3370,6 +3389,8 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       document.getElementById('meetingAttendees').value=m?.attendees||''; document.getElementById('meetingAgenda').value=m?.agenda||'';
       document.getElementById('meetingDecisions').value=m?.decisions||''; document.getElementById('meetingPending').value=m?.pending||'';
       document.getElementById('meetingNextActions').value=m?.nextActions||'';
+      const suggestions=document.getElementById('meetingAttendeeSuggestions');
+      if(suggestions)suggestions.innerHTML=Object.values(window.staffDirectory||{}).map(profile=>`<option value="@${escapeHtml(profile.displayName||profile.name||'')}"></option>`).join('');
       document.getElementById('meetingDialog').showModal();
     }
 
@@ -3699,7 +3720,7 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
 
     document.getElementById('meetingForm').addEventListener('submit',e=>{
       e.preventDefault(); const id=document.getElementById('meetingId').value; const existing=state.meetings.find(m=>m.id===id);
-      const m={ id:id||uid('meeting'), title:document.getElementById('meetingTitle').value.trim(), category:document.getElementById('meetingCategory').value, projectId:document.getElementById('meetingProject').value, date:document.getElementById('meetingDate').value, time:document.getElementById('meetingTime').value, attendees:document.getElementById('meetingAttendees').value.trim(), responses:{...(existing?.responses||{})}, agenda:document.getElementById('meetingAgenda').value.trim(), decisions:document.getElementById('meetingDecisions').value.trim(), pending:document.getElementById('meetingPending').value.trim(), nextActions:document.getElementById('meetingNextActions').value.trim(), createdAt:existing?.createdAt||new Date().toISOString() };
+      const m={ id:id||uid('meeting'),workspaceId:eventWorkspaceId, title:document.getElementById('meetingTitle').value.trim(), category:document.getElementById('meetingCategory').value, projectId:document.getElementById('meetingProject').value, date:document.getElementById('meetingDate').value, time:document.getElementById('meetingTime').value, attendees:document.getElementById('meetingAttendees').value.trim(),notifyAttendees:true, responses:{...(existing?.responses||{})}, agenda:document.getElementById('meetingAgenda').value.trim(), decisions:document.getElementById('meetingDecisions').value.trim(), pending:document.getElementById('meetingPending').value.trim(), nextActions:document.getElementById('meetingNextActions').value.trim(), createdAt:existing?.createdAt||new Date().toISOString() };
       if(!m.title||!m.date)return; if(existing)Object.assign(existing,m); else state.meetings.push(m);
       document.getElementById('meetingDialog').close(); saveState(existing?'ミーティングを更新しました':'ミーティングを追加しました');
     });
@@ -4033,6 +4054,18 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       }
       const notification=e.target.closest('[data-open-schedule]');
       if(notification){setView('schedulePolls');setTimeout(()=>document.querySelector(`[data-schedule-poll="${notification.dataset.openSchedule}"]`)?.scrollIntoView({behavior:'smooth',block:'start'}),80);return;}
+      const meetingNotification=e.target.closest('[data-open-meeting]');
+      if(meetingNotification){setView('meetings');setTimeout(()=>document.querySelector(`[data-kind="meeting"][data-id="${meetingNotification.dataset.openMeeting}"]`)?.scrollIntoView({behavior:'smooth',block:'center'}),80);return;}
+      const projectInvite=e.target.closest('.project-invite-copy');
+      if(projectInvite){
+        const project=state.projects.find(item=>item.id===projectInvite.dataset.projectInvite);if(!project)return;
+        const token=`${Date.now().toString(36)}${Math.random().toString(36).slice(2,12)}`,createdAt=new Date().toISOString();
+        const invite={id:uid('invite'),token,role:'external_collaborator',kind:'external',projectId:project.id,expiresAt:new Date(Date.now()+30*86400000).toISOString(),limit:20,used:0,active:true,createdAt,createdBy:window.currentStaffUser?.uid||''};
+        project.externalInvite=invite;state.adminConfig=state.adminConfig||defaultAdminConfig();state.adminConfig.invites=Array.isArray(state.adminConfig.invites)?state.adminConfig.invites:[];state.adminConfig.invites.push(invite);
+        const url=new URL('/app/',location.origin);url.searchParams.set('invite',token);url.searchParams.set('project',project.id);
+        navigator.clipboard?.writeText(url.toString()).then(()=>showToast('外部協力者用の招待リンクをコピーしました')).catch(()=>prompt('この招待リンクをコピーしてください',url.toString()));
+        persistStateSilently();return;
+      }
       const scheduleChoice=e.target.closest('.schedule-choice');
       if(scheduleChoice){
         const row=scheduleChoice.closest('[data-schedule-slot]');
@@ -4163,6 +4196,11 @@ const STORAGE_KEY = 'arasaki_staff_planner_v1';
       if(e.target.classList.contains('menu-group-name-input')){
         const row=e.target.closest('.menu-customize-row');const item=state.menuConfig.find(config=>menuEntryKey(config)===row.dataset.menuKey);const clean=e.target.value.trim();
         if(item?.type==='group'&&clean){item.label=clean;commitMenuConfig('カテゴリ名を変更しました');}return;
+      }
+      if(e.target.classList.contains('menu-page-icon-input')){
+        const row=e.target.closest('.menu-customize-row');const item=state.menuConfig.find(config=>menuEntryKey(config)===row.dataset.menuKey);
+        const icon=e.target.value.trim();
+        if(item?.type==='page'&&icon){item.icon=icon;commitMenuConfig('タスク一覧のアイコンを変更しました');}return;
       }
       if(e.target.classList.contains('task-toggle')){
         const card=e.target.closest('[data-kind="task"]'); const task=state.tasks.find(t=>t.id===card.dataset.id);
